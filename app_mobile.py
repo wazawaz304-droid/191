@@ -17,7 +17,8 @@ try:
 except:
     st.error("⚠️ ยังไม่ได้เชื่อมต่อ Google Sheets (ตรวจสอบ secrets.toml)")
 
-client = genai.Client(api_key='AIzaSyBAnsQP8Q-mz5O-bUyNaYdhoBp2SpD47kQ')
+# แก้ไขเพื่อให้ไปดึงรหัสจากไฟล์ลับแทน
+client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 
 # --- 3. ฟังก์ชันการทำงาน ---
 def process_with_ai(img):
