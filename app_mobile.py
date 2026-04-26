@@ -76,7 +76,7 @@ if page == "📸 สแกนบิลใหม่":
                 edited_df['unit_price'] = edited_df['total_price'] / edited_df['qty']
                 
                 # อ่านข้อมูลเดิมและ Append ใหม่
-                existing_df = conn.read()
+                existing_df = conn.read(ttl=0)
                 final_df = pd.concat([existing_df, edited_df], ignore_index=True)
                 conn.update(data=final_df)
                 
@@ -114,7 +114,7 @@ elif page == "📊 Dashboard & ประวัติราคา":
 elif page == "📋 ตารางสต๊อกทั้งหมด":
     st.header("📋 รายการทั้งหมดใน Google Sheets")
     try:
-        data = conn.read(ttl=0)
+        data = conn.read(ttl=1)
         st.dataframe(data, use_container_width=True)
     except:
         st.error("โหลดข้อมูลไม่ได้")
