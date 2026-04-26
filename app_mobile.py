@@ -114,7 +114,11 @@ elif page == "📊 Dashboard & ประวัติราคา":
 elif page == "📋 ตารางสต๊อกทั้งหมด":
     st.header("📋 รายการทั้งหมดใน Google Sheets")
     try:
-        data = conn.read()
+        data = conn.read(ttl=0)
         st.dataframe(data, use_container_width=True)
     except:
         st.error("โหลดข้อมูลไม่ได้")
+
+if st.sidebar.button("🔄 ดึงข้อมูลใหม่จาก Sheet"):
+    st.cache_data.clear() # สั่งล้างความจำที่ค้างอยู่ทั้งหมด
+    st.rerun()           # สั่งให้แอปเริ่มทำงานใหม่ทันที
