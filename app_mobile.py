@@ -140,7 +140,7 @@ def process_audio_with_ai(audio_bytes):
     
     # 2. แก้ไขส่วนการส่งข้อมูลให้เป็น types.Part
     response = client.models.generate_content(
-        model="gemini-1.5-flash-8b", # ใช้โมเดลล่าสุดตามสิทธิ์ Paid ของคุณ
+        model="gemini-3-flash", # ใช้โมเดลล่าสุดตามสิทธิ์ Paid ของคุณ
         contents=[
             types.Part.from_text(text=prompt),
             types.Part.from_bytes(
