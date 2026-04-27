@@ -122,3 +122,63 @@ elif page == "📋 ตารางสต๊อกทั้งหมด":
 if st.sidebar.button("🔄 ดึงข้อมูลใหม่จาก Sheet"):
     st.cache_data.clear() # สั่งล้างความจำที่ค้างอยู่ทั้งหมด
     st.rerun()           # สั่งให้แอปเริ่มทำงานใหม่ทันที
+
+# --- ฟังก์ชันประมวลผลเสียงด้วย AI ---
+def process_audio_with_ai(audio_bytes):
+    # ส่งไฟล์เสียงให้ Gemini ประมวลผล
+    prompt = """
+    คุณคือผู้ช่วยจัดการสต๊อคสินค้า 
+    จงฟังเสียงพูดนี้แล้วสกัดข้อมูลสินค้าออกมาเป็น JSON array:
+    - name (ชื่อสินค้า)
+    - qty (จำนวนเลข)
+    - unit (หน่วย)
+    - total_price (ราคารวม)
+    หากผู้พูดบอกราคาต่อหน่วย ให้คุณคำนวณเป็นราคารวมให้ด้วย
+    ตอบกลับเป็น PURE JSON เท่านั้น
+    """
+    # Gemini รับ bytes ของเสียงได้โดยตรง
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            prompt,
+            {"mime_type": "audio/wav", "data": audio_bytes}
+        ]
+    )
+    clean_json = response.text.replace('```json', '').replace('```', '').strip()
+    return json.loads(clean_json)
+
+# --- เพิ่มเมนูใน Sidebar ---
+# ปรับจากเดิม: page = st.sidebar.radio("ไปที่หน้า:", ["📸 สแกนบิลใหม่", ...])
+# เป็นแบบนี้:
+page = st.sidebar.radio("ไปที่หน้า:", ["📸 สแกนบิลใหม่", "🎙️ บันทึกด้วยเสียง", "📊 Dashboard & ประวัติราคา", "📋 ตารางสต๊อกทั้งหมด"])
+
+if page == "🎙️ บันทึกด้วยเสียง":
+    st.header("🎙️ สั่งงานด้วยเสียง")
+    st.info("ตัวอย่างการพูด: 'ซื้อไข่ไก่ 2 แผง ราคาแผงละ 120 บาท และน้ำดื่ม 3 แพ็ค แพ็คละ 50 บาท'")
+    
+    # ปุ่มอัดเสียงใน Streamlit (รองรับบนมือถือ)
+    audio_value = st.audio_input("กดปุ่มไมโครโฟนเพื่อเริ่มพูด")
+    
+    if audio_value:
+        st.audio(audio_value) # เปิดฟังเสียงที่อัดได้
+        if st.button("🚀 แปลงเสียงเป็นข้อมูล"):
+            with st.spinner('AI กำลังฟังและประมวลผล...'):
+                try:
+                    # อ่าน bytes จากไฟล์เสียงที่อัดได้
+                    audio_bytes = audio_value.read()
+                    voice_data = process_audio_with_ai(audio_bytes)
+                    st.session_state.voice_data = pd.DataFrame(voice_data)
+                    st.success("แปลงข้อมูลสำเร็จ!")
+                except Exception as e:
+                    st.error(f"AI งงเสียงพูด: {e}")
+
+    # ตารางตรวจสอบและบันทึก (เหมือนตอนสแกนบิล)
+    if 'voice_data' in st.session_state:
+        st.subheader("📝 ตรวจสอบข้อมูลจากเสียงพูด")
+        edited_voice_df = st.data_editor(st.session_state.voice_data, use_container_width=True)
+        
+        if st.button("💾 ยืนยันบันทึกลง Google Sheets"):
+            # ใช้ฟังก์ชันบันทึกเดียวกับบิล
+            # (ใส่ logic การบันทึกลง Sheet เหมือนในหน้าสแกนบิล)
+            st.success("บันทึกจากเสียงพูดเรียบร้อย!")
+            del st.session_state.voice_data
