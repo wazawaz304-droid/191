@@ -138,7 +138,7 @@ def process_audio_with_ai(audio_bytes):
     """
     # Gemini รับ bytes ของเสียงได้โดยตรง
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.5-flash-native-audio-latest",
         contents=[
             prompt,
             {"mime_type": "audio/wav", "data": audio_bytes}
