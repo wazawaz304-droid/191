@@ -123,8 +123,10 @@ if st.sidebar.button("🔄 ดึงข้อมูลใหม่จาก Shee
     st.cache_data.clear() # สั่งล้างความจำที่ค้างอยู่ทั้งหมด
     st.rerun()           # สั่งให้แอปเริ่มทำงานใหม่ทันที
 # --- ฟังก์ชันประมวลผลเสียงด้วย AI ---
+# 1. เพิ่มการ Import types เข้ามา (ถ้ายังไม่มี)
+from google.genai import types 
+
 def process_audio_with_ai(audio_bytes):
-    # ส่งไฟล์เสียงให้ Gemini ประมวลผล
     prompt = """
     คุณคือผู้ช่วยจัดการสต๊อคสินค้า 
     จงฟังเสียงพูดนี้แล้วสกัดข้อมูลสินค้าออกมาเป็น JSON array:
@@ -135,14 +137,19 @@ def process_audio_with_ai(audio_bytes):
     หากผู้พูดบอกราคาต่อหน่วย ให้คุณคำนวณเป็นราคารวมให้ด้วย
     ตอบกลับเป็น PURE JSON เท่านั้น
     """
-    # Gemini รับ bytes ของเสียงได้โดยตรง
+    
+    # 2. แก้ไขส่วนการส่งข้อมูลให้เป็น types.Part
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3-flash", # ใช้โมเดลล่าสุดตามสิทธิ์ Paid ของคุณ
         contents=[
-            prompt,
-            {"mime_type": "audio/wav", "data": audio_bytes}
+            types.Part.from_text(text=prompt),
+            types.Part.from_bytes(
+                data=audio_bytes, 
+                mime_type="audio/wav"
+            )
         ]
     )
+    
     clean_json = response.text.replace('```json', '').replace('```', '').strip()
     return json.loads(clean_json)
 
