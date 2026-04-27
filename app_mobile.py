@@ -38,7 +38,7 @@ def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
             ]
         )
         response = client.models.generate_content(
-            model="gemini-2.5-flash-native-audio-latest", 
+            model="gemini-2.5-flash", 
             contents=[user_content]
         )
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
