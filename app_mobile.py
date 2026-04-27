@@ -124,50 +124,52 @@ if st.sidebar.button("🔄 ดึงข้อมูลใหม่จาก Shee
     st.rerun()           # สั่งให้แอปเริ่มทำงานใหม่ทันที
 
 # --- ฟังก์ชันประมวลผลเสียงด้วย AI ---
-def process_audio_with_ai(audio_bytes):
-    # ส่งไฟล์เสียงให้ Gemini ประมวลผล
-    prompt = """
-    คุณคือผู้ช่วยจัดการสต๊อคสินค้า 
-    จงฟังเสียงพูดนี้แล้วสกัดข้อมูลสินค้าออกมาเป็น JSON array:
-    - name (ชื่อสินค้า)
-    - qty (จำนวนเลข)
-    - unit (หน่วย)
-    - total_price (ราคารวม)
-    หากผู้พูดบอกราคาต่อหน่วย ให้คุณคำนวณเป็นราคารวมให้ด้วย
-    ตอบกลับเป็น PURE JSON เท่านั้น
+from google.genai import types # มั่นใจว่ามีบรรทัดนี้ที่บนสุดของไฟล์นะครับ
+
+def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
+    prompt_text = """
+    สกัดข้อมูลสินค้าจากเสียงพูดนี้เป็น JSON array:
+    [{"name": "...", "qty": ..., "unit": "...", "total_price": ...}]
+    ตอบเป็น PURE JSON เท่านั้น ห้ามมีคำอธิบาย
     """
-    # Gemini รับ bytes ของเสียงได้โดยตรง
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-native-audio-latest",
-        contents=[
-            prompt,
-            {"mime_type": "audio/wav", "data": audio_bytes}
-        ]
-    )
-    clean_json = response.text.replace('```json', '').replace('```', '').strip()
-    return json.loads(clean_json)
-
-# --- เพิ่มเมนูใน Sidebar ---
-# ปรับจากเดิม: page = st.sidebar.radio("ไปที่หน้า:", ["📸 สแกนบิลใหม่", ...])
-# เป็นแบบนี้:
-page = st.sidebar.radio("ไปที่หน้า:", ["📸 สแกนบิลใหม่", "🎙️ บันทึกด้วยเสียง", "📊 Dashboard & ประวัติราคา", "📋 ตารางสต๊อกทั้งหมด"])
-
-if page == "🎙️ บันทึกด้วยเสียง":
-    st.header("🎙️ สั่งงานด้วยเสียง")
-    st.info("ตัวอย่างการพูด: 'ซื้อไข่ไก่ 2 แผง ราคาแผงละ 120 บาท และน้ำดื่ม 3 แพ็ค แพ็คละ 50 บาท'")
     
-    # ปุ่มอัดเสียงใน Streamlit (รองรับบนมือถือ)
+    try:
+        # เราจะสร้างโครงสร้างแบบ Content -> Parts เพื่อความชัวร์ 100%
+        user_content = types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=prompt_text),
+                types.Part.from_bytes(
+                    data=audio_bytes, 
+                    mime_type=mime_type
+                )
+            ]
+        )
+        
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-native-audio-latest", 
+            contents=[user_content] # ส่งแบบ Content Object ไปเลย
+        )
+        
+        # กรองเอาแค่ JSON ออกมา
+        clean_json = response.text.replace('```json', '').replace('```', '').strip()
+        return json.loads(clean_json)
+        
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการประมวลผล: {e}")
+        return None
+
+# --- ตรงส่วนเรียกใช้ในแอป ---
+if page == "🎙️ บันทึกด้วยเสียง":
     audio_value = st.audio_input("กดปุ่มไมโครโฟนเพื่อเริ่มพูด")
     
     if audio_value:
-        st.audio(audio_value) # เปิดฟังเสียงที่อัดได้
         if st.button("🚀 แปลงเสียงเป็นข้อมูล"):
-            with st.spinner('AI กำลังฟังและประมวลผล...'):
-                try:
-                    # อ่าน bytes จากไฟล์เสียงที่อัดได้
-                    audio_bytes = audio_value.read()
-                    voice_data = process_audio_with_ai(audio_bytes)
-                    st.session_state.voice_data = pd.DataFrame(voice_data)
+            with st.spinner('AI กำลังตั้งใจฟัง...'):
+                # ส่งประเภทไฟล์จากเครื่องไปเลย (ป้องกันเรื่อง wav/webm/mp4)
+                data = process_audio_with_ai(audio_value.read(), mime_type=audio_value.type)
+                if data:
+                    st.session_state.voice_data = pd.DataFrame(data)
                     st.success("แปลงข้อมูลสำเร็จ!")
                 except Exception as e:
                     st.error(f"AI งงเสียงพูด: {e}")
