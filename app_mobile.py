@@ -122,7 +122,6 @@ elif page == "📋 ตารางสต๊อกทั้งหมด":
 if st.sidebar.button("🔄 ดึงข้อมูลใหม่จาก Sheet"):
     st.cache_data.clear() # สั่งล้างความจำที่ค้างอยู่ทั้งหมด
     st.rerun()           # สั่งให้แอปเริ่มทำงานใหม่ทันที
-
 # --- ฟังก์ชันประมวลผลเสียงด้วย AI ---
 def process_audio_with_ai(audio_bytes):
     # ส่งไฟล์เสียงให้ Gemini ประมวลผล
