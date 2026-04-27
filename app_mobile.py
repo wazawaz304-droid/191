@@ -69,25 +69,53 @@ def save_data_to_sheets(df_to_save):
         return False
 
 # --- หน้าที่ 1: สแกนบิลใหม่ ---
+# --- หน้าที่ 1: สแกนบิลใหม่ (ปรับปรุงให้เลือกก่อนเปิดกล้อง) ---
 if page == "📸 สแกนบิลใหม่":
     st.header("📸 สแกนบิลเข้าสต๊อก")
-    input_type = st.radio("เลือกวิธี:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
-    img_file = st.camera_input("สแกน") if input_type == "📷 ถ่ายรูปสด" else st.file_uploader("เลือกรูป", type=['jpg','png'])
+    
+    # 1. สร้างตัวเลือกเริ่มต้นแบบ 'ยังไม่เลือก' เพื่อไม่ให้กล้องเปิดอัตโนมัติ
+    input_type = st.radio(
+        "คุณต้องการนำเข้ารูปภาพด้วยวิธีใด?", 
+        ["ยังไม่เลือก", "📷 ถ่ายรูปสด (Camera)", "📁 เลือกไฟล์จากเครื่อง (Upload)"], 
+        index=0, # ตั้งค่าให้เป็น 'ยังไม่เลือก' ไว้ก่อน
+        horizontal=True
+    )
 
+    img_file = None # ตัวแปรเก็บไฟล์ภาพ
+
+    # 2. แสดง Widget ตามที่เลือกเท่านั้น
+    if input_type == "📷 ถ่ายรูปสด (Camera)":
+        img_file = st.camera_input("ส่องกล้องไปที่บิลแล้วกดถ่ายรูป")
+    
+    elif input_type == "📁 เลือกไฟล์จากเครื่อง (Upload)":
+        img_file = st.file_uploader("เลือกไฟล์รูปภาพบิล (JPG, PNG)", type=['jpg', 'png', 'jpeg'])
+    
+    else:
+        st.info("💡 โปรดเลือกวิธีการนำเข้รูปภาพด้านบน เพื่อเริ่มต้นการสแกน")
+
+    # 3. เมื่อมีรูปภาพเข้ามาแล้ว (ไม่ว่าจะจากกล้องหรือไฟล์)
     if img_file:
         img = Image.open(img_file)
-        if st.button("🪄 เริ่มสแกน"):
+        st.image(img, caption="รูปภาพที่เตรียมประมวลผล", use_container_width=True)
+        
+        if st.button("🪄 เริ่มสแกนด้วย AI"):
             with st.spinner('AI กำลังอ่านบิล...'):
                 try:
+                    # เรียกใช้ฟังก์ชัน AI ตัวเดิม
                     data = process_with_ai(img)
                     st.session_state.bill_data = pd.DataFrame(data)
-                except Exception as e: st.error(f"อ่านไม่ออก: {e}")
+                    st.success("✅ สแกนสำเร็จ!")
+                except Exception as e:
+                    st.error(f"❌ AI อ่านไม่ออก: {e}")
 
+    # 4. ส่วนแสดงตารางแก้ไขข้อมูล (เหมือนเดิม)
     if 'bill_data' in st.session_state:
+        st.subheader("📝 ตรวจสอบและแก้ไขข้อมูล")
         edited_df = st.data_editor(st.session_state.bill_data, use_container_width=True, num_rows="dynamic")
-        if st.button("💾 บันทึกข้อมูลบิล"):
+        if st.button("💾 ยืนยันบันทึกข้อมูลบิล"):
             if save_data_to_sheets(edited_df):
                 del st.session_state.bill_data
+                st.rerun() # รีเฟรชหน้าเพื่อให้ตารางหายไปหลังบันทึก
 
 # --- หน้าที่ 2: บันทึกด้วยเสียง (แก้ไข Syntax และ Logic แล้ว) ---
 elif page == "🎙️ บันทึกด้วยเสียง":
