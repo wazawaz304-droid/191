@@ -9,81 +9,26 @@ import plotly.express as px
 from datetime import datetime
 
 # --- 1. การตั้งค่าหน้าจอ ---
-st.set_page_config(page_title="AI Stock Master 2026", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="AI Stock Master 2026", layout="wide")
 
 # --- 2. การเชื่อมต่อ Google Sheets และ AI ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error(f"⚠️ ไม่สามารถเชื่อมต่อ Google Sheets ได้: {e}")
-
-# ดึง API Key จาก Secrets (ต้องตั้งค่าใน Streamlit Cloud Secrets)
-try:
-    client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 except:
-    st.error("🔑 ไม่พบ API Key ในระบบ Secrets โปรดตรวจสอบการตั้งค่า")
+    st.error("⚠️ ยังไม่ได้เชื่อมต่อ Google Sheets (ตรวจสอบ secrets.toml)")
 
-# --- ฟังก์ชันช่วยดึงรายชื่อสินค้าเดิม (เพื่อทำระบบเดาคำและ AI Match) ---
-def get_unique_products():
-    try:
-        # อ่านข้อมูลสดๆ (ตั้ง TTL 1 นาทีเพื่อให้ดึงข้อมูลใหม่บ่อยขึ้น)
-        df = conn.read(ttl="1m")
-        if not df.empty and 'name' in df.columns:
-            return sorted([str(x) for x in df['name'].unique() if x])
-        return []
-    except:
-        return []
+client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 
-# --- ฟังก์ชันช่วยแกะ JSON อย่างปลอดภัย (ป้องกัน Error เวลา AI แถมคำพูด) ---
-def safe_parse_json(text_response):
-    try:
-        # ลอกเปลือก Markdown (```json ... ```) ออกถ้ามี
-        if "```" in text_response:
-            content = text_response.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        else:
-            content = text_response
-        return json.loads(content.strip())
-    except Exception as e:
-        st.error(f"❌ AI ส่งข้อมูลผิดรูปแบบ: {e}")
-        st.info(f"ข้อมูลต้นฉบับจาก AI: {text_response}")
-        return []
-
-# --- 3. ฟังก์ชัน AI Engine (Match ชื่อสินค้าอัตโนมัติ) ---
+# --- 3. ฟังก์ชันการทำงาน (AI Engine) ---
 
 def process_with_ai(img):
-    existing_items = get_unique_products()
-    items_list_str = ", ".join(existing_items)
-    
-    # ใช้ {{ }} เพื่อป้องกัน f-string error ใน Python (Invalid format specifier)
-    prompt = f"""
-    คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลจากรูปภาพบิลเป็น JSON array ในรูปแบบนี้เท่านั้น:
-    [{{ "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม }}]
-    
-    กฎการทำงาน:
-    1. ตรวจสอบชื่อสินค้ากับลิสต์เดิมที่มีในระบบ: [{items_list_str}]
-    2. หากชื่อคล้ายกันมาก (เช่น 'ไข่ไก่สด' แต่ในระบบมี 'ไข่ไก่') ให้เลือกใช้ชื่อในลิสต์เดิม ('ไข่ไก่')
-    3. ตอบกลับเป็น PURE JSON เท่านั้น ห้ามมีคำอธิบายอื่น
-    """
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt, img])
-    return safe_parse_json(response.text)
+    prompt = "Extract items into JSON array: name, qty, unit, total_price. Return ONLY pure JSON."
+    response = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img])
+    clean_json = response.text.replace('```json', '').replace('```', '').strip()
+    return json.loads(clean_json)
 
 def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
-    existing_items = get_unique_products()
-    items_list_str = ", ".join(existing_items)
-
-    prompt_text = f"""
-    คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลจากเสียงพูดเป็น JSON array ในรูปแบบนี้เท่านั้น:
-    [{{ "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม }}]
-    
-    กฎการทำงาน:
-    1. ตรวจสอบชื่อสินค้ากับลิสต์เดิมที่มีในระบบ: [{items_list_str}]
-    2. หากพูดคล้ายกันมาก ให้ Match ชื่อให้ตรงกับลิสต์เดิม (เช่น พูดว่า 'ไข่ไก่ครับ' -> ให้ใช้ 'ไข่ไก่')
-    3. ตัดคำพูดที่ไม่จำเป็นออก ให้เหลือแค่ใจความหลัก
-    ตอบเป็น PURE JSON เท่านั้น
-    """
-    
+    prompt_text = "สกัดข้อมูลสินค้าจากเสียงพูดนี้เป็น JSON array: name, qty, unit, total_price ตอบเป็น PURE JSON เท่านั้น"
     try:
         user_content = types.Content(
             role="user",
@@ -92,129 +37,138 @@ def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
             ]
         )
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=[user_content])
-        return safe_parse_json(response.text)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=[user_content]
+        )
+        clean_json = response.text.replace('```json', '').replace('```', '').strip()
+        return json.loads(clean_json)
     except Exception as e:
-        st.error(f"❌ AI ประมวลผลเสียงไม่ได้: {e}")
-        return []
+        st.error(f"AI ฟังไม่ชัด: {e}")
+        return None
 
-# --- ฟังก์ชันบันทึกข้อมูลลง Sheet ---
+# --- 4. เมนูหลัก (Sidebar) ---
+st.sidebar.title("🚀 AI Stock Menu")
+# *** เพิ่มเมนูเสียงเข้าไปตรงนี้แล้วครับ ***
+page = st.sidebar.radio("เลือกหน้าที่ต้องการ:", 
+    ["📸 สแกนบิลใหม่", "🎙️ บันทึกด้วยเสียง", "📊 Dashboard & ประวัติราคา", "📋 ตารางสต๊อกทั้งหมด"])
+
+# --- ส่วนกลาง: ฟังก์ชันบันทึกข้อมูล (ใช้ร่วมกัน) ---
 def save_data_to_sheets(df_to_save):
     try:
         df_to_save['date'] = datetime.now().strftime("%Y-%m-%d")
         df_to_save['unit_price'] = df_to_save['total_price'] / df_to_save['qty']
         
-        # อ่านข้อมูลเดิมมาต่อท้าย
         existing_df = conn.read(ttl=0)
         final_df = pd.concat([existing_df, df_to_save], ignore_index=True)
         conn.update(data=final_df)
-        st.success("✅ บันทึกข้อมูลลง Google Sheets เรียบร้อย!")
+        st.success("💾 บันทึกลง Google Sheets เรียบร้อยแล้ว!")
         return True
     except Exception as e:
         st.error(f"❌ บันทึกไม่ได้: {e}")
         return False
 
-# --- 4. การแสดงผล UI (Streamlit) ---
-st.sidebar.title("🚀 AI Stock Master")
-page = st.sidebar.radio("เลือกเมนู:", ["📸 สแกนบิลสินค้า", "🎙️ บันทึกด้วยเสียง", "📊 Dashboard", "📋 ดูข้อมูลทั้งหมด"])
-
-# เตรียมข้อมูลสินค้าสำหรับระบบเดาคำ (Dropdown)
-product_suggestions = get_unique_products()
-
-# --- หน้าสแกนบิล ---
-if page == "📸 สแกนบิลสินค้า":
-    st.header("📸 สแกนบิลสินค้า")
-    choice = st.radio("เลือกวิธีนำเข้า:", ["ยังไม่เลือก", "📷 ถ่ายรูปสด", "📁 อัปโหลดรูปภาพ"], horizontal=True)
+# --- หน้าที่ 1: สแกนบิลใหม่ ---
+# --- หน้าที่ 1: สแกนบิลใหม่ (ปรับปรุงให้เลือกก่อนเปิดกล้อง) ---
+if page == "📸 สแกนบิลใหม่":
+    st.header("📸 สแกนบิลเข้าสต๊อก")
     
-    img_file = None
-    if choice == "📷 ถ่ายรูปสด":
-        img_file = st.camera_input("สแกนบิล")
-    elif choice == "📁 อัปโหลดรูปภาพ":
-        img_file = st.file_uploader("เลือกไฟล์รูปภาพ", type=['jpg', 'jpeg', 'png'])
-    else:
-        st.info("💡 โปรดเลือกวิธีนำเข้ารูปภาพด้านบนเพื่อเริ่มต้น")
+    # 1. สร้างตัวเลือกเริ่มต้นแบบ 'ยังไม่เลือก' เพื่อไม่ให้กล้องเปิดอัตโนมัติ
+    input_type = st.radio(
+        "คุณต้องการนำเข้ารูปภาพด้วยวิธีใด?", 
+        ["ยังไม่เลือก", "📷 ถ่ายรูปสด (Camera)", "📁 เลือกไฟล์จากเครื่อง (Upload)"], 
+        index=0, # ตั้งค่าให้เป็น 'ยังไม่เลือก' ไว้ก่อน
+        horizontal=True
+    )
 
+    img_file = None # ตัวแปรเก็บไฟล์ภาพ
+
+    # 2. แสดง Widget ตามที่เลือกเท่านั้น
+    if input_type == "📷 ถ่ายรูปสด (Camera)":
+        img_file = st.camera_input("ส่องกล้องไปที่บิลแล้วกดถ่ายรูป")
+    
+    elif input_type == "📁 เลือกไฟล์จากเครื่อง (Upload)":
+        img_file = st.file_uploader("เลือกไฟล์รูปภาพบิล (JPG, PNG)", type=['jpg', 'png', 'jpeg'])
+    
+    else:
+        st.info("💡 โปรดเลือกวิธีการนำเข้รูปภาพด้านบน เพื่อเริ่มต้นการสแกน")
+
+    # 3. เมื่อมีรูปภาพเข้ามาแล้ว (ไม่ว่าจะจากกล้องหรือไฟล์)
     if img_file:
         img = Image.open(img_file)
+        st.image(img, caption="รูปภาพที่เตรียมประมวลผล", use_container_width=True)
+        
         if st.button("🪄 เริ่มสแกนด้วย AI"):
-            with st.spinner("AI กำลังอ่านข้อมูล..."):
-                data = process_with_ai(img)
-                if data:
+            with st.spinner('AI กำลังอ่านบิล...'):
+                try:
+                    # เรียกใช้ฟังก์ชัน AI ตัวเดิม
+                    data = process_with_ai(img)
                     st.session_state.bill_data = pd.DataFrame(data)
+                    st.success("✅ สแกนสำเร็จ!")
+                except Exception as e:
+                    st.error(f"❌ AI อ่านไม่ออก: {e}")
 
+    # 4. ส่วนแสดงตารางแก้ไขข้อมูล (เหมือนเดิม)
     if 'bill_data' in st.session_state:
-        st.subheader("📝 ตรวจสอบและแก้ไข")
-        edited_df = st.data_editor(
-            st.session_state.bill_data, 
-            use_container_width=True, 
-            num_rows="dynamic",
-            column_config={
-                "name": st.column_config.SelectboxColumn("ชื่อสินค้า", options=product_suggestions, required=True),
-                "qty": st.column_config.NumberColumn("จำนวน", min_value=0),
-                "total_price": st.column_config.NumberColumn("ราคารวม", format="%.2f ฿")
-            }
-        )
-        if st.button("💾 ยืนยันบันทึกลงสต๊อก"):
+        st.subheader("📝 ตรวจสอบและแก้ไขข้อมูล")
+        edited_df = st.data_editor(st.session_state.bill_data, use_container_width=True, num_rows="dynamic")
+        if st.button("💾 ยืนยันบันทึกข้อมูลบิล"):
             if save_data_to_sheets(edited_df):
                 del st.session_state.bill_data
-                st.rerun()
+                st.rerun() # รีเฟรชหน้าเพื่อให้ตารางหายไปหลังบันทึก
 
-# --- หน้าบันทึกด้วยเสียง ---
+# --- หน้าที่ 2: บันทึกด้วยเสียง (แก้ไข Syntax และ Logic แล้ว) ---
 elif page == "🎙️ บันทึกด้วยเสียง":
     st.header("🎙️ บันทึกรายการด้วยเสียง")
-    audio_val = st.audio_input("กดเพื่อพูด (เช่น: ไข่ไก่ 2 แผง ราคา 200 บาท)")
+    audio_value = st.audio_input("กดเพื่อพูดรายการสินค้า")
     
-    if audio_val:
+    if audio_value:
         if st.button("🚀 แปลงเสียงเป็นข้อมูล"):
-            with st.spinner("AI กำลังวิเคราะห์เสียง..."):
-                res = process_audio_with_ai(audio_val.read(), mime_type=audio_val.type)
-                if res:
-                    st.session_state.voice_data = pd.DataFrame(res)
+            with st.spinner('AI กำลังตั้งใจฟัง...'):
+                # *** แก้ไข Try-Except ตรงนี้แล้วครับ ***
+                try:
+                    res_data = process_audio_with_ai(audio_value.read(), mime_type=audio_value.type)
+                    if res_data:
+                        st.session_state.voice_data = pd.DataFrame(res_data)
+                        st.success("แปลงข้อมูลสำเร็จ!")
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาด: {e}")
 
     if 'voice_data' in st.session_state:
         st.subheader("📝 ตรวจสอบข้อมูลจากเสียงพูด")
-        edited_voice = st.data_editor(
-            st.session_state.voice_data, 
-            use_container_width=True, 
-            num_rows="dynamic",
-            column_config={
-                "name": st.column_config.SelectboxColumn("ชื่อสินค้า", options=product_suggestions, required=True),
-                "qty": st.column_config.NumberColumn("จำนวน", min_value=0),
-                "total_price": st.column_config.NumberColumn("ราคารวม", format="%.2f ฿")
-            }
-        )
-        if st.button("💾 ยืนยันบันทึกรายการเสียง"):
-            if save_data_to_sheets(edited_voice):
+        edited_voice_df = st.data_editor(st.session_state.voice_data, use_container_width=True, num_rows="dynamic")
+        if st.button("💾 ยืนยันบันทึกจากเสียง"):
+            if save_data_to_sheets(edited_voice_df):
                 del st.session_state.voice_data
-                st.rerun()
 
-# --- หน้า Dashboard ---
-elif page == "📊 Dashboard":
+# --- หน้าที่ 3: Dashboard ---
+elif page == "📊 Dashboard & ประวัติราคา":
     st.header("📊 วิเคราะห์ข้อมูล")
-    df_db = conn.read(ttl=0)
-    if not df_db.empty:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(px.pie(df_db, values='total_price', names='name', hole=0.4, title="💰 สัดส่วนรายจ่าย"), use_container_width=True)
-        with c2:
-            items = df_db['name'].unique()
-            target = st.selectbox("เลือกสินค้าเพื่อดูประวัติราคา:", items)
-            item_df = df_db[df_db['name'] == target].sort_values('date')
-            st.plotly_chart(px.line(item_df, x='date', y='unit_price', markers=True, title=f"📈 ราคาต่อหน่วย: {target}"), use_container_width=True)
-    else:
-        st.info("ยังไม่มีข้อมูลในระบบ")
+    df = conn.read(ttl=0)
+    if not df.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            fig_pie = px.pie(df, values='total_price', names='name', hole=0.4, title="💰 สัดส่วนรายจ่าย")
+            st.plotly_chart(fig_pie, use_container_width=True)
+        with col2:
+            selected_item = st.selectbox("เลือกสินค้า:", df['name'].unique())
+            item_df = df[df['name'] == selected_item].sort_values('date')
+            fig_line = px.line(item_df, x='date', y='unit_price', markers=True, title=f"📈 ราคา: {selected_item}")
+            st.plotly_chart(fig_line, use_container_width=True)
+    else: st.info("ยังไม่มีข้อมูล")
 
-# --- หน้าดูข้อมูลทั้งหมด ---
-elif page == "📋 ดูข้อมูลทั้งหมด":
-    st.header("📋 รายการทั้งหมดใน Google Sheets")
+# --- หน้าที่ 4: ตารางสต๊อก ---
+elif page == "📋 ตารางสต๊อกทั้งหมด":
+    st.header("📋 ข้อมูลทั้งหมด")
     st.dataframe(conn.read(ttl=0), use_container_width=True)
 
-# Sidebar buttons
-if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล (Refresh)"):
+# --- ปุ่มพิเศษที่ Sidebar ---
+if st.sidebar.button("🔄 ดึงข้อมูลใหม่จาก Sheet"):
     st.cache_data.clear()
     st.rerun()
 
-if st.sidebar.button("🔍 ตรวจสอบโมเดลที่ใช้ได้"):
+st.sidebar.markdown("---")
+if st.sidebar.button("🔍 ตรวจเช็กชื่อโมเดล"):
     try:
         for m in client.models.list(): st.code(m.name)
     except Exception as e: st.error(f"Error: {e}")
