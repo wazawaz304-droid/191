@@ -7,9 +7,6 @@ import json
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import imaplib
-import email
-import re
 
 # --- 1. การตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="AI Stock Master 2026", layout="wide", page_icon="📦")
@@ -263,7 +260,6 @@ page = st.sidebar.radio(
         "🎙️ บันทึกด้วยเสียง",
         "📊 Dashboard",
         "📋 รายการสต๊อก",
-        "💵 รายได้เดลิเวอรี่",
         "🤖 AI Agent",
     ]
 )
@@ -313,101 +309,6 @@ if page == "📸 สแกนบิลใหม่":
             if save_data_to_sheets(edited_df):
                 del st.session_state.bill_data
                 st.rerun()
-
-# --- หน้า รายได้เดลิเวอรี่ ---
-elif page == "💵 รายได้เดลิเวอรี่":
-    st.header("💵 สรุปรายได้จากแอปเดลิเวอรี่ (LINE MAN / ShopeeFood / Grab)")
-
-    st.markdown(
-        """
-ระบบนี้จะ:
-1. ดึงอีเมลจาก Gmail 2 บัญชี (ที่ตั้งค่าใน secrets แล้ว)
-2. ค้นหาอีเมลที่เข้าข่ายเป็นรายงานรายได้จาก LINE MAN / ShopeeFood / Grab
-3. แยกยอดเงิน แล้วบันทึกลง Google Sheets (worksheet: `delivery_revenue`)
-        """
-    )
-
-    # เลือกช่วงวันที่เริ่มต้นดึงอีเมล (ค่าเริ่มต้น = วันนี้)
-    today = datetime.now().date()
-    since_date_input = st.date_input("ดึงอีเมลตั้งแต่วันที่", value=today)
-    # แปลงเป็น string รูปแบบที่ IMAP ใช้ (DD-MMM-YYYY)
-    since_str = since_date_input.strftime("%d-%b-%Y")
-
-    if st.button("📩 ดึงยอดจากอีเมลเดลิเวอรี่ตอนนี้"):
-        with st.spinner("กำลังดึงอีเมลและคำนวณยอดรายได้..."):
-            df_rev = fetch_delivery_revenue_from_email(since_str)
-
-        if not df_rev.empty:
-            st.subheader("ผลลัพธ์ที่ดึงได้รอบนี้")
-            st.dataframe(df_rev, use_container_width=True)
-
-            if st.button("💾 บันทึกยอดที่ดึงได้ลง Google Sheets"):
-                if save_delivery_revenue_to_sheet(df_rev):
-                    st.success("เสร็จแล้ว! คุณสามารถดูสรุปรายรับในตารางด้านล่างได้")
-        else:
-            st.warning("ไม่พบอีเมลรายได้เดลิเวอรี่ที่มียอดเงินในช่วงวันที่ที่เลือก")
-
-    st.markdown("---")
-    st.subheader("📊 สรุปรายได้เดลิเวอรี่ (จากข้อมูลที่บันทึกไว้ในชีต)")
-
-    # อ่านข้อมูลที่เคยบันทึกแล้ว
-    try:
-        df_all_rev = conn.read(ttl=0, worksheet="delivery_revenue")
-    except Exception:
-        df_all_rev = pd.DataFrame(columns=["date", "platform", "source_email", "subject", "revenue"])
-
-    if df_all_rev.empty:
-        st.info("ยังไม่มีข้อมูลรายได้เดลิเวอรี่ในชีต")
-    else:
-        # แปลงประเภท และจัดรูป
-        df_all_rev["date"] = pd.to_datetime(df_all_rev["date"], errors="coerce").dt.date
-        df_all_rev["revenue"] = pd.to_numeric(df_all_rev["revenue"], errors="coerce")
-
-        # ฟิลเตอร์ช่วงวันที่ดูรายงาน
-        col1, col2 = st.columns(2)
-        with col1:
-            min_date = df_all_rev["date"].min()
-            max_date = df_all_rev["date"].max()
-            start_filter = st.date_input("ดูตั้งแต่วันที่", value=min_date, min_value=min_date, max_value=max_date)
-        with col2:
-            end_filter = st.date_input("ถึงวันที่", value=max_date, min_value=min_date, max_value=max_date)
-
-        mask = (df_all_rev["date"] >= start_filter) & (df_all_rev["date"] <= end_filter)
-        df_filtered = df_all_rev.loc[mask].copy()
-
-        if df_filtered.empty:
-            st.info("ช่วงวันที่ที่เลือกยังไม่มีข้อมูล")
-        else:
-            # ตารางดิบ
-            st.dataframe(df_filtered.sort_values(["date", "platform"]), use_container_width=True)
-
-            # สรุปรายวัน
-            df_daily = (
-                df_filtered
-                .groupby(["date", "platform"], as_index=False)["revenue"]
-                .sum()
-            )
-
-            # กราฟแท่งรายวันแยกแพลตฟอร์ม
-            fig_bar = px.bar(
-                df_daily,
-                x="date",
-                y="revenue",
-                color="platform",
-                barmode="group",
-                title="รายได้เดลิเวอรี่ต่อวัน แยกตามแพลตฟอร์ม",
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-            # สรุปรวมตามแพลตฟอร์ม
-            df_by_platform = (
-                df_filtered
-                .groupby("platform", as_index=False)["revenue"]
-                .sum()
-                .sort_values("revenue", ascending=False)
-            )
-            st.subheader("💡 สรุปรายได้ตามแพลตฟอร์ม (ช่วงวันที่ที่เลือก)")
-            st.dataframe(df_by_platform, use_container_width=True)
 
 # --- หน้าบันทึกด้วยเสียง ---
 elif page == "🎙️ บันทึกด้วยเสียง":
@@ -489,183 +390,6 @@ elif page == "📊 Dashboard":
                             title=f"📈 ราคาต่อหน่วย: {target}"
                         )
                         st.plotly_chart(fig_line, use_container_width=True)
-# ================== ฟังก์ชันดึงยอดรายได้จาก Gmail (เดลิเวอรี่) ==================
-
-IMAP_SERVER = "imap.gmail.com"
-IMAP_PORT = 993
-
-DELIVERY_PLATFORMS = {
-    "LINEMAN": {
-        "subjects": ["รายงานยอดขายรายวัน - LINE MAN Wongnai"],   # ใช้ "contains"
-    },
-    "SHOPEEFOOD": {
-        "subjects": ["รายงานการโอนเงินสำหรับ ShopeeFood"],
-    },
-    "GRAB": {
-        "subjects": ["สรุปยอดขายสำหรับคำสั่งซื้อ", "GrabFood"],
-    },
-}
-
-def connect_imap(email_user: str, app_password: str):
-    """เชื่อมต่อ IMAP สำหรับ Gmail 1 บัญชี"""
-    mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-    mail.login(email_user, app_password)
-    return mail
-
-def search_delivery_emails(mail, since_date: str):
-    """
-    ค้นหาอีเมลใน inbox ตั้งแต่ since_date (รูปแบบ DD-MMM-YYYY เช่น 25-Apr-2026)
-    """
-    mail.select("inbox")
-    status, data = mail.search(None, f'(SINCE "{since_date}")')
-    if status != "OK":
-        return []
-    return data[0].split()
-
-def detect_delivery_platform(subject: str) -> str:
-    """เดาว่าเป็นอีเมลจากแพลตฟอร์มไหนจากหัวข้อเมล"""
-    subj_upper = subject.upper()
-    for platform, cfg in DELIVERY_PLATFORMS.items():
-        for kw in cfg["subjects"]:
-            if kw.upper() in subj_upper:
-                return platform
-    return "UNKNOWN"
-
-def parse_revenue_amount(body: str) -> float:
-    """
-    พยายามหาเลขเงินจากตัวเนื้อความอีเมล
-    ตัวอย่าง regex: หา '1,234.56 บาท', '999 THB', '2,000฿' ฯลฯ
-    """
-    pattern = r"([\d,]+\.\d+|[\d,]+)\s*(บาท|THB|฿)"
-    matches = re.findall(pattern, body)
-    if not matches:
-        return 0.0
-
-    # สมมติให้ "ตัวสุดท้าย" เป็นยอดสรุป (ส่วนใหญ่รายงานจะมีสรุปท้ายเมล)
-    amount_str = matches[-1][0].replace(",", "")
-    try:
-        return float(amount_str)
-    except:
-        return 0.0
-
-def fetch_delivery_revenue_from_email(since_date: str):
-    """
-    ดึงยอดรายได้จาก Gmail 2 บัญชี ตั้งแต่วันที่กำหนด
-    since_date: string "DD-MMM-YYYY" เช่น "27-Apr-2026"
-    return: DataFrame[date, platform, source_email, subject, revenue]
-    """
-    rows = []
-
-    # อ่านข้อมูล Gmail จาก secrets
-    gmail_accounts = []
-    if "gmail1" in st.secrets:
-        gmail_accounts.append(st.secrets["gmail1"])
-
-
-    if not gmail_accounts:
-        st.error("ยังไม่ได้ตั้งค่า gmail1 ใน secrets.toml")
-        return pd.DataFrame()
-
-    for acc in gmail_accounts:
-        email_user = acc.get("email")
-        app_password = acc.get("app_password")
-        if not email_user or not app_password:
-            continue
-
-        try:
-            mail = connect_imap(email_user, app_password)
-        except Exception as e:
-            st.error(f"เชื่อมต่ออีเมล {email_user} ไม่ได้: {e}")
-            continue
-
-        try:
-            mail_ids = search_delivery_emails(mail, since_date)
-            for num in mail_ids:
-                status, data = mail.fetch(num, "(RFC822)")
-                if status != "OK":
-                    continue
-
-                msg = email.message_from_bytes(data[0][1])
-                subject = msg.get("Subject", "")
-                date_str = msg.get("Date", "")
-                try:
-                    dt = email.utils.parsedate_to_datetime(date_str)
-                except Exception:
-                    dt = datetime.now()
-
-                platform = detect_delivery_platform(subject)
-
-                # ดึง body แบบ text/plain
-                body_text = ""
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        ctype = part.get_content_type()
-                        if ctype == "text/plain":
-                            charset = part.get_content_charset() or "utf-8"
-                            try:
-                                body_text += part.get_payload(decode=True).decode(charset, errors="ignore")
-                            except:
-                                pass
-                else:
-                    charset = msg.get_content_charset() or "utf-8"
-                    try:
-                        body_text = msg.get_payload(decode=True).decode(charset, errors="ignore")
-                    except:
-                        pass
-
-                revenue = parse_revenue_amount(body_text)
-
-                if revenue > 0:
-                    rows.append({
-                        "date": dt.strftime("%Y-%m-%d"),
-                        "platform": platform,
-                        "source_email": email_user,
-                        "subject": subject,
-                        "revenue": revenue,
-                    })
-        finally:
-            try:
-                mail.logout()
-            except:
-                pass
-
-    if not rows:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(rows)
-
-    # ลบรายการซ้ำ (ถ้ามี) โดยใช้ date+platform+revenue+subject เป็น key หยาบ ๆ
-    df = df.drop_duplicates(subset=["date", "platform", "revenue", "subject"])
-    return df
-
-def save_delivery_revenue_to_sheet(df_revenue: pd.DataFrame):
-    """บันทึกยอดรายได้เดลิเวอรี่ลง Google Sheets (worksheet: delivery_revenue)"""
-    if conn is None:
-        st.error("❌ ยังไม่สามารถเชื่อมต่อ Google Sheets ได้")
-        return False
-
-    if df_revenue.empty:
-        st.warning("ไม่พบข้อมูลรายได้จากอีเมล (ยอดเป็น 0 หรือไม่พบอีเมลที่ตรงเงื่อนไข)")
-        return False
-
-    try:
-        # ถ้าใช้ worksheet แยกชื่อ 'delivery_revenue'
-        existing = conn.read(ttl=0, worksheet="delivery_revenue")
-    except Exception:
-        # ถ้า worksheet ยังไม่มี ให้เริ่มจาก DataFrame ว่าง
-        existing = pd.DataFrame(columns=["date", "platform", "source_email", "subject", "revenue"])
-
-    # รวมข้อมูลเก่า/ใหม่ แล้วลบ duplicate
-    combined = pd.concat([existing, df_revenue], ignore_index=True)
-    combined = combined.drop_duplicates(subset=["date", "platform", "source_email", "subject", "revenue"])
-
-    try:
-        conn.update(worksheet="delivery_revenue", data=combined)
-        st.success("✅ บันทึกยอดรายได้เดลิเวอรี่ลง Google Sheets สำเร็จ!")
-        return True
-    except Exception as e:
-        st.error(f"❌ บันทึกยอดเดลิเวอรี่ไม่ได้: {e}")
-        return False
 
 # --- หน้าตารางทั้งหมด ---
 elif page == "📋 รายการสต๊อก":
@@ -722,8 +446,6 @@ elif page == "🤖 AI Agent":
 
         # เก็บข้อความของ Agent
         st.session_state.agent_messages.append(("assistant", answer))
-
-
 
 # ปุ่มพิเศษที่ Sidebar
 if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
