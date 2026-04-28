@@ -19,6 +19,18 @@ except:
 
 client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 
+# --- ฟังก์ชันดึงรายชื่อสินค้าเดิมเพื่อทำระบบเดาคำ ---
+def get_unique_products():
+    try:
+        # อ่านข้อมูลจาก Sheet (ตั้ง cache ไว้ 5 นาทีเพื่อไม่ให้แอปช้า)
+        df = conn.read(ttl="5m")
+        if not df.empty and 'name' in df.columns:
+            # ดึงชื่อที่ไม่ซ้ำ และเรียงลำดับ ก-ฮ
+            return sorted(df['name'].unique().tolist())
+        return []
+    except:
+        return []
+
 # --- 3. ฟังก์ชันการทำงาน (AI Engine) ---
 
 def process_with_ai(img):
@@ -108,14 +120,33 @@ if page == "📸 สแกนบิลใหม่":
                 except Exception as e:
                     st.error(f"❌ AI อ่านไม่ออก: {e}")
 
-    # 4. ส่วนแสดงตารางแก้ไขข้อมูล (เหมือนเดิม)
+   # ตารางแก้ไขข้อมูล (แบบมีระบบเดาคำ)
     if 'bill_data' in st.session_state:
         st.subheader("📝 ตรวจสอบและแก้ไขข้อมูล")
-        edited_df = st.data_editor(st.session_state.bill_data, use_container_width=True, num_rows="dynamic")
+        
+        # ดึงรายชื่อสินค้าที่เคยซื้อซ้ำมาเตรียมไว้
+        product_suggestions = get_unique_products()
+        
+        edited_df = st.data_editor(
+            st.session_state.bill_data, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            column_config={
+                "name": st.column_config.SelectboxColumn(
+                    "ชื่อสินค้า (เดาจากประวัติ)",
+                    help="เลือกสินค้าที่เคยซื้อซ้ำ หรือพิมพ์ชื่อใหม่ได้เลย",
+                    options=product_suggestions,
+                    required=True,
+                ),
+                "qty": st.column_config.NumberColumn("จำนวน", min_value=0),
+                "total_price": st.column_config.NumberColumn("ราคารวม", format="%.2f ฿")
+            }
+        )
+        
         if st.button("💾 ยืนยันบันทึกข้อมูลบิล"):
             if save_data_to_sheets(edited_df):
                 del st.session_state.bill_data
-                st.rerun() # รีเฟรชหน้าเพื่อให้ตารางหายไปหลังบันทึก
+                st.rerun()
 
 # --- หน้าที่ 2: บันทึกด้วยเสียง (แก้ไข Syntax และ Logic แล้ว) ---
 elif page == "🎙️ บันทึกด้วยเสียง":
@@ -134,12 +165,30 @@ elif page == "🎙️ บันทึกด้วยเสียง":
                 except Exception as e:
                     st.error(f"เกิดข้อผิดพลาด: {e}")
 
+    # ตารางตรวจสอบจากเสียงพูด (แบบมีระบบเดาคำ)
     if 'voice_data' in st.session_state:
         st.subheader("📝 ตรวจสอบข้อมูลจากเสียงพูด")
-        edited_voice_df = st.data_editor(st.session_state.voice_data, use_container_width=True, num_rows="dynamic")
+        
+        product_suggestions = get_unique_products() # ดึงคำเดา
+        
+        edited_voice_df = st.data_editor(
+            st.session_state.voice_data, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            column_config={
+                "name": st.column_config.SelectboxColumn(
+                    "ชื่อสินค้า (เดาจากประวัติ)",
+                    options=product_suggestions,
+                    required=True,
+                ),
+                "qty": st.column_config.NumberColumn("จำนวน", min_value=0),
+                "total_price": st.column_config.NumberColumn("ราคารวม", format="%.2f ฿")
+            }
+        )
         if st.button("💾 ยืนยันบันทึกจากเสียง"):
             if save_data_to_sheets(edited_voice_df):
                 del st.session_state.voice_data
+                st.rerun()
 
 # --- หน้าที่ 3: Dashboard ---
 elif page == "📊 Dashboard & ประวัติราคา":
