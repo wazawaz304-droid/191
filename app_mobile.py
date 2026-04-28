@@ -49,54 +49,50 @@ def clean_html(raw_html):
     return soup.get_text(separator=' ')
 
 def fetch_delivery_emails():
+    """ดึงอีเมลจากทุกโฟลเดอร์ (Deep Search) เพื่อแก้ปัญหาหาไม่เจอใน INBOX"""
     user = st.secrets["gmail"]["user"]
     pwd = st.secrets["gmail"]["password"]
     
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(user, pwd)
-        mail.select("INBOX")
         
-        # ค้นหาโดยใช้เพียง 'ผู้ส่ง' เท่านั้น (เพื่อให้ IMAP ทำงานง่ายที่สุดและไม่เกิด Error)
+        # เปลี่ยนจาก "INBOX" เป็น "[Gmail]/All Mail" เพื่อค้นหาจากทุกที่
+        # หากเกิด Error ให้ลองเปลี่ยนกลับเป็น "INBOX" หรือ "" (ว่าง)
+        mail.select('"[Gmail]/All Mail"') 
+        
+        cutoff_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+        
+        # ค้นหาโดยเน้นผู้ส่ง (Email Sender) ซึ่งเสถียรที่สุด
         search_targets = [
-            {"platform": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "keyword": "รายงานยอดขายรายวัน"},
+            {"platform": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "keyword": "รายงานยอดขาย"},
             {"platform": "ShopeeFood", "from": "noreply.th@shopeefood.com", "keyword": "รายงานการโอนเงิน"},
             {"platform": "Grab", "from": "no-reply@grab.com", "keyword": "สรุปยอดขาย"}
         ]
         
         all_contents = []
-        cutoff_date = datetime.now() - timedelta(days=7)
-        
         for target in search_targets:
-            # ค้นหาอีเมลทั้งหมดจากผู้ส่งรายนี้ (ไม่ระบุวันที่ในคำสั่ง search เพื่อป้องกัน Server งง)
-            status, data = mail.search(None, f'(FROM "{target["from"]}")')
+            # ค้นหาเฉพาะผู้ส่งและวันที่
+            status, data = mail.search(None, f'(FROM "{target["from"]}" SINCE {cutoff_date})')
             
-            if status == "OK":
-                # ดึงเฉพาะ 15 ฉบับล่าสุดมาตรวจสอบ (เพื่อความรวดเร็ว)
-                email_ids = data[0].split()[-15:] 
+            if status == "OK" and data[0]:
+                email_ids = data[0].split()
+                st.sidebar.write(f"✅ พบอีเมลจาก {target['platform']} {len(email_ids)} ฉบับ")
                 
-                for e_id in reversed(email_ids): # ตรวจสอบจากใหม่ไปเก่า
+                for e_id in reversed(email_ids): # ล่าสุดก่อน
                     _, msg_data = mail.fetch(e_id, '(RFC822)')
                     msg = email.message_from_bytes(msg_data[0][1])
                     
-                    # 1. ตรวจสอบวันที่จาก Header ของอีเมลโดยตรง
-                    date_str = msg.get("Date")
-                    email_date = email.utils.parsedate_to_datetime(date_str).replace(tzinfo=None)
-                    
-                    # ถ้าเก่ากว่า 7 วันแล้ว ให้หยุดตรวจเช็คผู้ส่งรายนี้
-                    if email_date < cutoff_date:
-                        break
-                        
-                    # 2. ถอดรหัสหัวข้ออีเมล (Subject)
+                    # ถอดรหัสหัวข้อ
                     subject_raw = decode_header(msg.get("Subject"))
                     subject_text = ""
                     for content, encoding in subject_raw:
                         if isinstance(content, bytes):
-                            try: subject_text += content.decode(encoding or "utf-8")
-                            except: subject_text += content.decode("tis-620", errors="ignore")
-                        else: subject_text += str(content)
+                            subject_text += content.decode(encoding or "utf-8", errors="ignore")
+                        else:
+                            subject_text += str(content)
                     
-                    # 3. ถ้าหัวข้อมี Keyword ที่ต้องการ ให้ดึงเนื้อหา
+                    # กรองเฉพาะอีเมลรายงาน
                     if target["keyword"] in subject_text:
                         body = ""
                         if msg.is_multipart():
@@ -106,11 +102,12 @@ def fetch_delivery_emails():
                                     body = part.get_payload(decode=True).decode(charset, errors='ignore')
                                     break
                         else:
-                            charset = msg.get_content_charset() or 'utf-8'
-                            body = msg.get_payload(decode=True).decode(charset, errors='ignore')
+                            body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
                         
                         if body:
                             all_contents.append({"platform": target["platform"], "content": clean_html(body)})
+            else:
+                st.sidebar.warning(f"⚠️ ไม่พบอีเมลจาก {target['platform']}")
         
         mail.logout()
         return all_contents
