@@ -49,7 +49,7 @@ def clean_html(raw_html):
     return soup.get_text(separator=' ')
 
 def fetch_delivery_emails():
-    """ดึงอีเมลจาก 3 แพลตฟอร์มย้อนหลัง 7 วัน"""
+    """ดึงอีเมลจาก 3 แพลตฟอร์มย้อนหลัง 7 วัน (รองรับภาษาไทย)"""
     user = st.secrets["gmail"]["user"]
     pwd = st.secrets["gmail"]["password"]
     
@@ -58,36 +58,45 @@ def fetch_delivery_emails():
         mail.login(user, pwd)
         mail.select("inbox")
         
-        date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+        # คำนวณวันที่ย้อนหลัง 7 วันในรูปแบบ YYYY/MM/DD สำหรับ Gmail Raw Search
+        date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y/%m/%d")
+        
+        # ใช้ X-GM-RAW เพื่อให้ค้นหาภาษาไทยได้แม่นยำและไม่เกิด Error เรื่อง ASCII
         platforms = {
-            "LINE MAN": f'(FROM "no-reply-merchant@lmwn.com" SUBJECT "รายงานยอดขายรายวัน" SINCE {date_cutoff})',
-            "ShopeeFood": f'(FROM "noreply.th@shopeefood.com" SUBJECT "รายงานการโอนเงินสำหรับ ShopeeFood" SINCE {date_cutoff})',
-            "Grab": f'(FROM "no-reply@grab.com" SUBJECT "สรุปยอดขาย" SINCE {date_cutoff})'
+            "LINE MAN": f'from:no-reply-merchant@lmwn.com "รายงานยอดขายรายวัน" after:{date_cutoff}',
+            "ShopeeFood": f'from:noreply.th@shopeefood.com "รายงานการโอนเงินสำหรับ ShopeeFood" after:{date_cutoff}',
+            "Grab": f'from:no-reply@grab.com "สรุปยอดขาย" "GrabFood" after:{date_cutoff}'
         }
         
         all_contents = []
         for p_name, query in platforms.items():
-            _, data = mail.search(None, query)
-            for e_id in data[0].split():
-                _, msg_data = mail.fetch(e_id, '(RFC822)')
-                msg = email.message_from_bytes(msg_data[0][1])
-                body = ""
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() in ["text/plain", "text/html"]:
-                            body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                            break
-                else:
-                    body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
-                
-                all_contents.append({"platform": p_name, "content": clean_html(body)})
+            # เปลี่ยนวิธีค้นหาเป็น X-GM-RAW และ Encode เป็น UTF-8 
+            status, data = mail.search(None, 'X-GM-RAW', query.encode('utf-8'))
+            
+            if status == "OK":
+                for e_id in data[0].split():
+                    _, msg_data = mail.fetch(e_id, '(RFC822)')
+                    msg = email.message_from_bytes(msg_data[0][1])
+                    
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() in ["text/plain", "text/html"]:
+                                charset = part.get_content_charset() or 'utf-8'
+                                body = part.get_payload(decode=True).decode(charset, errors='ignore')
+                                break
+                    else:
+                        charset = msg.get_content_charset() or 'utf-8'
+                        body = msg.get_payload(decode=True).decode(charset, errors='ignore')
+                    
+                    if body:
+                        all_contents.append({"platform": p_name, "content": clean_html(body)})
         
         mail.logout()
         return all_contents
     except Exception as e:
-        st.error(f"📧 Gmail Error: {e}")
+        st.error(f"📧 Gmail Error: {str(e)}") # แสดง Error ให้ละเอียดขึ้น
         return []
-
 def process_revenue_ai(email_text):
     """ใช้ Gemini สกัดข้อมูลรายรับจากข้อความอีเมล"""
     prompt = """
