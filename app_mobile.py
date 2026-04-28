@@ -22,10 +22,9 @@ client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 # --- ฟังก์ชันดึงรายชื่อสินค้าเดิมเพื่อทำระบบเดาคำ ---
 def get_unique_products():
     try:
-        # อ่านข้อมูลจาก Sheet (ตั้ง cache ไว้ 5 นาทีเพื่อไม่ให้แอปช้า)
+        # อ่านข้อมูลจาก Sheet (ตั้ง cache ไว้ 5 นาที)
         df = conn.read(ttl="5m")
         if not df.empty and 'name' in df.columns:
-            # ดึงชื่อที่ไม่ซ้ำ และเรียงลำดับ ก-ฮ
             return sorted(df['name'].unique().tolist())
         return []
     except:
@@ -34,13 +33,44 @@ def get_unique_products():
 # --- 3. ฟังก์ชันการทำงาน (AI Engine) ---
 
 def process_with_ai(img):
-    prompt = "Extract items into JSON array: name, qty, unit, total_price. Return ONLY pure JSON."
+    # 1. ดึงรายชื่อสินค้าเก่ามาส่งให้ AI
+    existing_products = get_unique_products()
+    product_list_str = ", ".join(existing_products)
+
+    # 2. ปรับ Prompt ให้ AI ช่วย Match ชื่อ
+    prompt = f"""
+    คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลจากรูปภาพบิลเป็น JSON array:
+    [{"name": "...", "qty": ..., "unit": "...", "total_price": ...}]
+    
+    *** กฎด้านชื่อสินค้า (name) ***:
+    1. ตรวจสอบกับลิสต์สินค้าเดิมที่มี: [{product_list_str}]
+    2. หากชื่อในบิลคล้ายกับในลิสต์ ให้เลือกใช้ชื่อในลิสต์ (เช่น 'ไข่ไก่เบอร์ 2' -> 'ไข่ไก่')
+    3. หากเป็นสินค้าใหม่ ให้ใช้ชื่อตามจริง
+    
+    Return ONLY pure JSON.
+    """
     response = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img])
     clean_json = response.text.replace('```json', '').replace('```', '').strip()
     return json.loads(clean_json)
 
 def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
-    prompt_text = "สกัดข้อมูลสินค้าจากเสียงพูดนี้เป็น JSON array: name, qty, unit, total_price ตอบเป็น PURE JSON เท่านั้น"
+    # 1. ดึงรายชื่อสินค้าเก่ามาส่งให้ AI
+    existing_products = get_unique_products()
+    product_list_str = ", ".join(existing_products)
+
+    # 2. ปรับ Prompt ให้เน้นการกรองคำสร้อยออก
+    prompt_text = f"""
+    คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลจากเสียงพูดเป็น JSON array:
+    [{"name": "...", "qty": ..., "unit": "...", "total_price": ...}]
+    
+    *** กฎด้านชื่อสินค้า (name) ***:
+    1. เปรียบเทียบกับลิสต์สินค้าที่มีอยู่: [{product_list_str}]
+    2. หากคล้ายกัน ให้ Match ให้ตรงกับลิสต์ (เช่น พูด 'ไข่ไก่สด' -> ในลิสต์มี 'ไข่ไก่' ให้ใช้ 'ไข่ไก่')
+    3. ตัดคำขยายที่ไม่จำเป็นออก ให้เหลือแค่ใจความหลัก
+    
+    ตอบเป็น PURE JSON เท่านั้น
+    """
+    
     try:
         user_content = types.Content(
             role="user",
@@ -56,7 +86,7 @@ def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(clean_json)
     except Exception as e:
-        st.error(f"AI ฟังไม่ชัด: {e}")
+        st.error(f"AI ประมวลผลเสียงไม่ได้: {e}")
         return None
 
 # --- 4. เมนูหลัก (Sidebar) ---
@@ -124,19 +154,22 @@ if page == "📸 สแกนบิลใหม่":
     if 'bill_data' in st.session_state:
         st.subheader("📝 ตรวจสอบและแก้ไขข้อมูล")
         
-        # ดึงรายชื่อสินค้าที่เคยซื้อซ้ำมาเตรียมไว้
-        product_suggestions = get_unique_products()
-        
-        edited_df = st.data_editor(
-            st.session_state.bill_data, 
-            use_container_width=True, 
-            num_rows="dynamic",
-            column_config={
-                "name": st.column_config.SelectboxColumn(
-                    "ชื่อสินค้า (เดาจากประวัติ)",
-                    help="เลือกสินค้าที่เคยซื้อซ้ำ หรือพิมพ์ชื่อใหม่ได้เลย",
-                    options=product_suggestions,
-                    required=True,
+       # ตัวอย่างในหน้าแก้ไขข้อมูล
+product_suggestions = get_unique_products() # ดึงคำเดามาใส่ตัวเลือก
+
+edited_df = st.data_editor(
+    st.session_state.bill_data, # หรือ voice_data
+    use_container_width=True,
+    num_rows="dynamic",
+    column_config={
+        "name": st.column_config.SelectboxColumn(
+            "ชื่อสินค้า (เดาจากประวัติ)",
+            options=product_suggestions, # รายการคำเดาจะโผล่ที่นี่
+            required=True,
+        ),
+        # ... column อื่นๆ ...
+    }
+)
                 ),
                 "qty": st.column_config.NumberColumn("จำนวน", min_value=0),
                 "total_price": st.column_config.NumberColumn("ราคารวม", format="%.2f ฿")
