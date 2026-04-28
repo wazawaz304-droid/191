@@ -56,10 +56,16 @@ def fetch_delivery_emails():
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(user, pwd)
         
-        # --- จุดแก้ไขสำคัญ: เลือกห้อง INBOX และเช็คสถานะ ---
-        status, _ = mail.select("ALL")
+        # --- จุดที่แก้ไข: เลือก "อีเมลทั้งหมด" ---
+        # สำหรับ Gmail ต้องใช้ชื่อเฉพาะนี้ครับ (มีเครื่องหมายคำพูดครอบด้านในด้วย)
+        status, _ = mail.select('"[Gmail]/All Mail"') 
+        
+        # ถ้าเลือกแบบภาษาอังกฤษไม่ได้ ให้ลองเลือกแบบภาษาไทย (เผื่อบางบัญชีตั้งค่าต่างกัน)
         if status != 'OK':
-            st.error("❌ ไม่สามารถเปิด INBOX ได้")
+            status, _ = mail.select('"[Gmail]/จดหมายทั้งหมด"')
+            
+        if status != 'OK':
+            st.error("❌ ไม่สามารถเข้าถึงโฟลเดอร์ 'อีเมลทั้งหมด' ได้")
             return []
         # ----------------------------------------------
 
