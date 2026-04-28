@@ -55,57 +55,55 @@ def fetch_delivery_emails():
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(user, pwd)
-        mail.select("INBOX") # แนะนำใช้ตัวพิมพ์ใหญ่
+        mail.select("INBOX")
         
-        # ปรับรูปแบบวันที่ให้ปลอดภัยที่สุด (วัน-เดือนภาษาอังกฤษย่อ-ปี)
-        date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-        
+        # ค้นหาโดยใช้เพียง 'ผู้ส่ง' เท่านั้น (เพื่อให้ IMAP ทำงานง่ายที่สุดและไม่เกิด Error)
         search_targets = [
-            {"platform": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "keyword": "รายงานยอดขาย"},
-            {"platform": "ShopeeFood", "from": "noreply.th@shopeefood.com", "keyword": "ShopeeFood"},
+            {"platform": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "keyword": "รายงานยอดขายรายวัน"},
+            {"platform": "ShopeeFood", "from": "noreply.th@shopeefood.com", "keyword": "รายงานการโอนเงิน"},
             {"platform": "Grab", "from": "no-reply@grab.com", "keyword": "สรุปยอดขาย"}
         ]
         
         all_contents = []
+        cutoff_date = datetime.now() - timedelta(days=7)
+        
         for target in search_targets:
-            # ค้นหาเฉพาะผู้ส่งและวันที่ (วิธีที่ปลอดภัยที่สุด)
-            query = f'(FROM "{target["from"]}" SINCE {date_cutoff})'
-            status, data = mail.search(None, query)
+            # ค้นหาอีเมลทั้งหมดจากผู้ส่งรายนี้ (ไม่ระบุวันที่ในคำสั่ง search เพื่อป้องกัน Server งง)
+            status, data = mail.search(None, f'(FROM "{target["from"]}")')
             
             if status == "OK":
-                email_ids = data[0].split()
-                # st.write(f"🔍 {target['platform']}: พบอีเมลจากผู้ส่งนี้ {len(email_ids)} ฉบับ") # เปิดเพื่อ Debug
+                # ดึงเฉพาะ 15 ฉบับล่าสุดมาตรวจสอบ (เพื่อความรวดเร็ว)
+                email_ids = data[0].split()[-15:] 
                 
-                for e_id in email_ids:
+                for e_id in reversed(email_ids): # ตรวจสอบจากใหม่ไปเก่า
                     _, msg_data = mail.fetch(e_id, '(RFC822)')
                     msg = email.message_from_bytes(msg_data[0][1])
                     
-                    # --- การถอดรหัส Subject ภาษาไทยแบบ Robust ---
+                    # 1. ตรวจสอบวันที่จาก Header ของอีเมลโดยตรง
+                    date_str = msg.get("Date")
+                    email_date = email.utils.parsedate_to_datetime(date_str).replace(tzinfo=None)
+                    
+                    # ถ้าเก่ากว่า 7 วันแล้ว ให้หยุดตรวจเช็คผู้ส่งรายนี้
+                    if email_date < cutoff_date:
+                        break
+                        
+                    # 2. ถอดรหัสหัวข้ออีเมล (Subject)
                     subject_raw = decode_header(msg.get("Subject"))
                     subject_text = ""
                     for content, encoding in subject_raw:
                         if isinstance(content, bytes):
-                            # ลองหลายๆ Encoding ที่เป็นไปได้สำหรับเมล์ไทย
-                            try:
-                                subject_text += content.decode(encoding or "utf-8")
-                            except:
-                                try: subject_text += content.decode("tis-620")
-                                except: subject_text += content.decode("utf-8", errors="ignore")
-                        else:
-                            subject_text += str(content)
+                            try: subject_text += content.decode(encoding or "utf-8")
+                            except: subject_text += content.decode("tis-620", errors="ignore")
+                        else: subject_text += str(content)
                     
-                    # st.write(f"📌 ตรวจสอบหัวข้อ: {subject_text}") # เปิดเพื่อ Debug
-                    
-                    if target["keyword"].lower() in subject_text.lower():
+                    # 3. ถ้าหัวข้อมี Keyword ที่ต้องการ ให้ดึงเนื้อหา
+                    if target["keyword"] in subject_text:
                         body = ""
                         if msg.is_multipart():
                             for part in msg.walk():
                                 if part.get_content_type() in ["text/plain", "text/html"]:
                                     charset = part.get_content_charset() or 'utf-8'
-                                    try:
-                                        body = part.get_payload(decode=True).decode(charset)
-                                    except:
-                                        body = part.get_payload(decode=True).decode(charset, errors='ignore')
+                                    body = part.get_payload(decode=True).decode(charset, errors='ignore')
                                     break
                         else:
                             charset = msg.get_content_charset() or 'utf-8'
