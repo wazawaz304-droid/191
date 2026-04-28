@@ -20,28 +20,6 @@ def get_conn():
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
         st.error(f"⚠️ เชื่อมต่อ Google Sheets ไม่ได้: {e}")
-        return Noneimport streamlit as st
-from streamlit_gsheets import GSheetsConnection
-from google import genai
-from google.genai import types
-from PIL import Image
-import json
-import pandas as pd
-import plotly.express as px
-from datetime import datetime
-
-# --- 1. การตั้งค่าหน้าจอ ---
-st.set_page_config(page_title="AI Stock Master 2026", layout="wide", page_icon="📦")
-
-# --- 2. การเชื่อมต่อ Google Sheets และ AI ---
-
-@st.cache_resource
-def get_conn():
-    """สร้างและ cache การเชื่อมต่อ Google Sheets"""
-    try:
-        return st.connection("gsheets", type=GSheetsConnection)
-    except Exception as e:
-        st.error(f"⚠️ เชื่อมต่อ Google Sheets ไม่ได้: {e}")
         return None
 
 conn = get_conn()
