@@ -49,53 +49,63 @@ def clean_html(raw_html):
     return soup.get_text(separator=' ')
 
 def fetch_delivery_emails():
-    """ดึงอีเมลย้อนหลัง 7 วัน (กลยุทธ์: ค้นหาด้วย ASCII แล้วกรองไทยด้วย Python)"""
     user = st.secrets["gmail"]["user"]
     pwd = st.secrets["gmail"]["password"]
     
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(user, pwd)
-        mail.select("inbox")
+        mail.select("INBOX") # แนะนำใช้ตัวพิมพ์ใหญ่
         
-        # 1. วันที่ย้อนหลัง 7 วัน (มาตรฐาน IMAP: 22-Apr-2026)
+        # ปรับรูปแบบวันที่ให้ปลอดภัยที่สุด (วัน-เดือนภาษาอังกฤษย่อ-ปี)
         date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
         
-        # 2. ตั้งค่าเป้าหมาย (ใช้เฉพาะอีเมลผู้ส่งเพื่อความปลอดภัย)
         search_targets = [
-            {"platform": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "keyword": "รายงานยอดขายรายวัน"},
-            {"platform": "ShopeeFood", "from": "noreply.th@shopeefood.com", "keyword": "รายงานการโอนเงิน"},
+            {"platform": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "keyword": "รายงานยอดขาย"},
+            {"platform": "ShopeeFood", "from": "noreply.th@shopeefood.com", "keyword": "ShopeeFood"},
             {"platform": "Grab", "from": "no-reply@grab.com", "keyword": "สรุปยอดขาย"}
         ]
         
         all_contents = []
         for target in search_targets:
-            # ค้นหาเฉพาะ FROM และ SINCE (เป็นภาษาอังกฤษ 100% - ไม่เกิด Error BAD แน่นอน)
+            # ค้นหาเฉพาะผู้ส่งและวันที่ (วิธีที่ปลอดภัยที่สุด)
             query = f'(FROM "{target["from"]}" SINCE {date_cutoff})'
             status, data = mail.search(None, query)
             
             if status == "OK":
-                for e_id in data[0].split():
+                email_ids = data[0].split()
+                # st.write(f"🔍 {target['platform']}: พบอีเมลจากผู้ส่งนี้ {len(email_ids)} ฉบับ") # เปิดเพื่อ Debug
+                
+                for e_id in email_ids:
                     _, msg_data = mail.fetch(e_id, '(RFC822)')
                     msg = email.message_from_bytes(msg_data[0][1])
                     
-                    # --- ตรวจสอบหัวข้ออีเมล (Subject) ด้วย Python ---
+                    # --- การถอดรหัส Subject ภาษาไทยแบบ Robust ---
                     subject_raw = decode_header(msg.get("Subject"))
                     subject_text = ""
                     for content, encoding in subject_raw:
                         if isinstance(content, bytes):
-                            subject_text += content.decode(encoding or "utf-8", errors="ignore")
+                            # ลองหลายๆ Encoding ที่เป็นไปได้สำหรับเมล์ไทย
+                            try:
+                                subject_text += content.decode(encoding or "utf-8")
+                            except:
+                                try: subject_text += content.decode("tis-620")
+                                except: subject_text += content.decode("utf-8", errors="ignore")
                         else:
                             subject_text += str(content)
                     
-                    # ถ้าหัวข้อมีคำสำคัญที่เราต้องการ (เช่น "สรุปยอดขาย") ค่อยดึงเนื้อหา
-                    if target["keyword"] in subject_text:
+                    # st.write(f"📌 ตรวจสอบหัวข้อ: {subject_text}") # เปิดเพื่อ Debug
+                    
+                    if target["keyword"].lower() in subject_text.lower():
                         body = ""
                         if msg.is_multipart():
                             for part in msg.walk():
                                 if part.get_content_type() in ["text/plain", "text/html"]:
                                     charset = part.get_content_charset() or 'utf-8'
-                                    body = part.get_payload(decode=True).decode(charset, errors='ignore')
+                                    try:
+                                        body = part.get_payload(decode=True).decode(charset)
+                                    except:
+                                        body = part.get_payload(decode=True).decode(charset, errors='ignore')
                                     break
                         else:
                             charset = msg.get_content_charset() or 'utf-8'
