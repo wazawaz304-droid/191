@@ -1,6 +1,7 @@
 streamlit
+streamlit-gsheets
 google-genai
-pillow
 pandas
 plotly
-st-gsheets-connection
+Pillow
+beautifulsoup4
