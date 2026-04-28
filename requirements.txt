@@ -1,7 +1,7 @@
 streamlit
-streamlit-gsheets
-google-genai
 pandas
-plotly
 Pillow
+plotly
 beautifulsoup4
+google-genai
+streamlit-gsheets
