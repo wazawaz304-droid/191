@@ -38,16 +38,24 @@ def process_with_ai(img):
     prompt = f"""
     คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลจากรูปภาพบิลเป็น JSON array:
     [{"name": "...", "qty": ..., "unit": "...", "total_price": ...}]
-    
-    *** กฎด้านชื่อสินค้า (name) ***:
-    1. ตรวจสอบกับลิสต์สินค้าเดิมที่มี: [{product_list_str}]
-    2. หากชื่อในบิลคล้ายกับในลิสต์ ให้เลือกใช้ชื่อในลิสต์ (เช่น 'ไข่ไก่เบอร์ 2' -> 'ไข่ไก่')
-    3. หากเป็นสินค้าใหม่ ให้ใช้ชื่อตามจริง
+    กฎด้านชื่อสินค้า: ตรวจสอบกับลิสต์ [{product_list_str}] หากคล้ายให้ใช้ชื่อในลิสต์
     Return ONLY pure JSON.
     """
     response = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img])
-    clean_json = response.text.replace('```json', '').replace('```', '').strip()
-    return json.loads(clean_json)
+    
+    # --- ระบบแกะ JSON แบบปลอดภัย ---
+    text_response = response.text
+    try:
+        if "```" in text_response:
+            clean_json = text_response.split("```")[1]
+            if clean_json.startswith("json"): 
+                clean_json = clean_json[4:]
+        else:
+            clean_json = text_response
+        return json.loads(clean_json.strip())
+    except Exception as e:
+        st.error("⚠️ AI ส่งข้อมูลรูปแบบผิดพลาด (บิลอาจจะไม่ชัด)")
+        return []
 
 def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
     existing_products = get_unique_products()
@@ -56,12 +64,8 @@ def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
     prompt_text = f"""
     คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลจากเสียงพูดเป็น JSON array:
     [{"name": "...", "qty": ..., "unit": "...", "total_price": ...}]
-    
-    *** กฎด้านชื่อสินค้า (name) ***:
-    1. เปรียบเทียบกับลิสต์สินค้าที่มีอยู่: [{product_list_str}]
-    2. หากคล้ายกัน ให้ Match ให้ตรงกับลิสต์ (เช่น พูด 'ไข่ไก่สด' -> 'ไข่ไก่')
-    3. ตัดคำขยายที่ไม่จำเป็นออก ให้เหลือแค่ใจความหลัก
-    ตอบเป็น PURE JSON เท่านั้น
+    กฎด้านชื่อสินค้า: เปรียบเทียบกับลิสต์ [{product_list_str}] หากคล้ายกันให้ใช้ชื่อจากลิสต์
+    ตอบเป็น PURE JSON เท่านั้น ห้ามมีคำอธิบายอื่น
     """
     
     try:
@@ -76,10 +80,19 @@ def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
             model="gemini-2.5-flash", 
             contents=[user_content]
         )
-        clean_json = response.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(clean_json)
+        
+        # --- ระบบแกะ JSON แบบปลอดภัย ---
+        text_response = response.text
+        if "```" in text_response:
+            clean_json = text_response.split("```")[1]
+            if clean_json.startswith("json"): 
+                clean_json = clean_json[4:]
+        else:
+            clean_json = text_response
+            
+        return json.loads(clean_json.strip())
     except Exception as e:
-        st.error(f"AI ประมวลผลเสียงไม่ได้: {e}")
+        st.error(f"⚠️ AI ประมวลผลเสียงไม่ได้หรือรูปแบบผิด: {e}")
         return None
 
 # --- ส่วนกลาง: ฟังก์ชันบันทึกข้อมูล ---
