@@ -56,20 +56,31 @@ def fetch_delivery_emails():
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(user, pwd)
         
-        # --- จุดที่แก้ไข: เลือก "อีเมลทั้งหมด" ---
-        # สำหรับ Gmail ต้องใช้ชื่อเฉพาะนี้ครับ (มีเครื่องหมายคำพูดครอบด้านในด้วย)
-        status, _ = mail.select('"[Gmail]/All Mail"') 
+        # --- [จุดแก้ไข] ระบบค้นหาชื่อโฟลเดอร์ All Mail แบบอัตโนมัติ ---
+        all_mail_folder = None
+        # ดึงรายชื่อโฟลเดอร์ทั้งหมดออกมาตรวจสอบ
+        status, folder_list = mail.list()
+        if status == 'OK':
+            for folder_info in folder_list:
+                folder_str = folder_info.decode('utf-8', errors='ignore')
+                # Gmail จะใส่ Flag "\All" ไว้ที่โฟลเดอร์ 'อีเมลทั้งหมด' เสมอ (ไม่ว่าภาษาไทยหรืออังกฤษ)
+                if '\\All' in folder_str:
+                    # สกัดเอาชื่อโฟลเดอร์ออกมา (เช่น "[Gmail]/All Mail" หรือ "[Gmail]/จดหมายทั้งหมด")
+                    all_mail_folder = folder_str.split(' "/" ')[-1]
+                    break
         
-        # ถ้าเลือกแบบภาษาอังกฤษไม่ได้ ให้ลองเลือกแบบภาษาไทย (เผื่อบางบัญชีตั้งค่าต่างกัน)
-        if status != 'OK':
-            status, _ = mail.select('"[Gmail]/จดหมายทั้งหมด"')
-            
-        if status != 'OK':
-            st.error("❌ ไม่สามารถเข้าถึงโฟลเดอร์ 'อีเมลทั้งหมด' ได้")
-            return []
-        # ----------------------------------------------
+        # ถ้าหา \All ไม่เจอจริงๆ ให้ใช้ค่ามาตรฐาน (ใส่เครื่องหมายอัญประกาศครอบ)
+        if not all_mail_folder:
+            all_mail_folder = '"[Gmail]/All Mail"'
 
-        # วันที่ย้อนหลัง 7 วัน (มาตรฐาน IMAP: 22-Apr-2026)
+        # เลือกโฟลเดอร์ด้วยชื่อที่ระบบหามาได้
+        status, _ = mail.select(all_mail_folder)
+        
+        if status != 'OK':
+            st.error(f"❌ ไม่สามารถเข้าถึงโฟลเดอร์ {all_mail_folder} ได้")
+            return []
+        # --------------------------------------------------------
+
         date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
         
         search_targets = [
@@ -80,7 +91,7 @@ def fetch_delivery_emails():
         
         all_contents = []
         for target in search_targets:
-            # ค้นหาด้วย FROM และ SINCE (เป็นภาษาอังกฤษ 100% ปลอดภัยที่สุด)
+            # ค้นหาโดยใช้ FROM และ SINCE (เป็นภาษาอังกฤษล้วน ปลอดภัยจาก ASCII Error)
             query = f'(FROM "{target["from"]}" SINCE {date_cutoff})'
             status, data = mail.search(None, query)
             
@@ -90,14 +101,13 @@ def fetch_delivery_emails():
                     _, msg_data = mail.fetch(e_id, '(RFC822)')
                     msg = email.message_from_bytes(msg_data[0][1])
                     
-                    # ถอดรหัสหัวข้อ
+                    # ถอดรหัสหัวข้อภาษาไทย
                     subject_raw = decode_header(msg.get("Subject"))
                     subject_text = "".join(
                         content.decode(encoding or "utf-8", errors="ignore") if isinstance(content, bytes) else str(content)
                         for content, encoding in subject_raw
                     )
                     
-                    # กรองเฉพาะอีเมลที่มี Keyword
                     if target["keyword"] in subject_text:
                         body = ""
                         if msg.is_multipart():
