@@ -49,7 +49,7 @@ def clean_html(raw_html):
     return soup.get_text(separator=' ')
 
 def fetch_delivery_emails():
-    """ดึงอีเมลจาก 3 แพลตฟอร์มย้อนหลัง 7 วัน (รองรับภาษาไทย)"""
+    """ดึงอีเมลย้อนหลัง 7 วัน (ใช้มาตรฐาน IMAP UTF-8 เพื่อความเสถียร)"""
     user = st.secrets["gmail"]["user"]
     pwd = st.secrets["gmail"]["password"]
     
@@ -58,26 +58,32 @@ def fetch_delivery_emails():
         mail.login(user, pwd)
         mail.select("inbox")
         
-        # คำนวณวันที่ย้อนหลัง 7 วันในรูปแบบ YYYY/MM/DD สำหรับ Gmail Raw Search
-        date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y/%m/%d")
+        # 1. คำนวณวันที่ย้อนหลัง 7 วัน รูปแบบมาตรฐาน IMAP (เช่น 22-Apr-2026)
+        date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
         
-        # ใช้ X-GM-RAW เพื่อให้ค้นหาภาษาไทยได้แม่นยำและไม่เกิด Error เรื่อง ASCII
-        platforms = {
-            "LINE MAN": f'from:no-reply-merchant@lmwn.com "รายงานยอดขายรายวัน" after:{date_cutoff}',
-            "ShopeeFood": f'from:noreply.th@shopeefood.com "รายงานการโอนเงินสำหรับ ShopeeFood" after:{date_cutoff}',
-            "Grab": f'from:no-reply@grab.com "สรุปยอดขาย" "GrabFood" after:{date_cutoff}'
-        }
+        # 2. ตั้งค่าเงื่อนไขการค้นหา แยกเป็นรายเจ้า
+        # ใช้ Format: (FROM "อีเมล" SUBJECT "หัวข้อ" SINCE วันที่)
+        search_targets = [
+            {"name": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "sub": "รายงานยอดขายรายวัน"},
+            {"name": "ShopeeFood", "from": "noreply.th@shopeefood.com", "sub": "รายงานการโอนเงินสำหรับ ShopeeFood"},
+            {"name": "Grab", "from": "no-reply@grab.com", "sub": "สรุปยอดขาย"}
+        ]
         
         all_contents = []
-        for p_name, query in platforms.items():
-            # เปลี่ยนวิธีค้นหาเป็น X-GM-RAW และ Encode เป็น UTF-8 
-            status, data = mail.search(None, 'X-GM-RAW', query.encode('utf-8'))
+        for target in search_targets:
+            # สร้าง Query ภาษาไทยแบบมาตรฐาน IMAP
+            # ใช้ CHARSET UTF-8 เพื่อให้ค้นหาภาษาไทยได้
+            search_query = f'(FROM "{target["from"]}" SUBJECT "{target["sub"]}" SINCE {date_cutoff})'
+            
+            # ค้นหาโดยระบุ Charset เป็น UTF-8
+            status, data = mail.search("UTF-8", search_query.encode('utf-8'))
             
             if status == "OK":
                 for e_id in data[0].split():
                     _, msg_data = mail.fetch(e_id, '(RFC822)')
                     msg = email.message_from_bytes(msg_data[0][1])
                     
+                    # --- ส่วนการดึงเนื้อหา (เหมือนเดิมแต่ปรับปรุงเรื่อง Charset) ---
                     body = ""
                     if msg.is_multipart():
                         for part in msg.walk():
@@ -90,12 +96,12 @@ def fetch_delivery_emails():
                         body = msg.get_payload(decode=True).decode(charset, errors='ignore')
                     
                     if body:
-                        all_contents.append({"platform": p_name, "content": clean_html(body)})
+                        all_contents.append({"platform": target["name"], "content": clean_html(body)})
         
         mail.logout()
         return all_contents
     except Exception as e:
-        st.error(f"📧 Gmail Error: {str(e)}") # แสดง Error ให้ละเอียดขึ้น
+        st.error(f"📧 Gmail Error: {str(e)}")
         return []
 def process_revenue_ai(email_text):
     """ใช้ Gemini สกัดข้อมูลรายรับจากข้อความอีเมล"""
