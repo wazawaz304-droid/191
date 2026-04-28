@@ -4,4 +4,4 @@ Pillow
 plotly
 beautifulsoup4
 google-genai
-streamlit-gsheets
+st-gsheets-connection
