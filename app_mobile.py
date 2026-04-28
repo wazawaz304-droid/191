@@ -20,6 +20,28 @@ def get_conn():
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
         st.error(f"⚠️ เชื่อมต่อ Google Sheets ไม่ได้: {e}")
+        return Noneimport streamlit as st
+from streamlit_gsheets import GSheetsConnection
+from google import genai
+from google.genai import types
+from PIL import Image
+import json
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+
+# --- 1. การตั้งค่าหน้าจอ ---
+st.set_page_config(page_title="AI Stock Master 2026", layout="wide", page_icon="📦")
+
+# --- 2. การเชื่อมต่อ Google Sheets และ AI ---
+
+@st.cache_resource
+def get_conn():
+    """สร้างและ cache การเชื่อมต่อ Google Sheets"""
+    try:
+        return st.connection("gsheets", type=GSheetsConnection)
+    except Exception as e:
+        st.error(f"⚠️ เชื่อมต่อ Google Sheets ไม่ได้: {e}")
         return None
 
 conn = get_conn()
@@ -72,7 +94,7 @@ def safe_parse_json(text_response: str):
         st.error("❌ AI ส่งข้อมูลผิดรูปแบบ (ไม่ใช่ JSON ที่อ่านได้)")
         return []
 
-# --- 3. ฟังก์ชัน AI (Match ชื่อแบบไม่บังคับ) ---
+# --- 3. ฟังก์ชัน AI สำหรับบิลรูปภาพและเสียง ---
 
 def build_prompt_from_image(existing_items):
     items_str = ", ".join(existing_items)
@@ -137,7 +159,80 @@ def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
         st.error(f"❌ AI ฟังไม่ถนัดหรือเกิดข้อผิดพลาด: {e}")
         return []
 
-# ฟังก์ชันบันทึกข้อมูล
+# --- 3.1 ฟังก์ชัน AI Agent (คุยกับข้อมูลสต๊อค) ---
+
+def chat_with_stock_agent(user_message: str):
+    """
+    ให้ AI Agent อ่านข้อมูลจาก Google Sheets (ผ่าน DataFrame) แล้วตอบคำถามเกี่ยวกับสต๊อค/การใช้จ่าย
+    """
+    df = load_data()
+
+    # เตรียมข้อมูลแบบย่อให้ AI เห็น (ลดขนาดถ้าข้อมูลเยอะ)
+    if df.empty:
+        stock_summary = "ตอนนี้ยังไม่มีข้อมูลสินค้าในระบบเลย"
+    else:
+        # เลือกคอลัมน์สำคัญ
+        cols = [c for c in df.columns if c in ["name", "qty", "unit", "total_price", "unit_price", "date"]]
+        small_df = df[cols].copy()
+
+        # ถ้าข้อมูลเยอะมาก ตัดให้เหลือเฉพาะล่าสุด 300 แถว
+        if len(small_df) > 300:
+            small_df = small_df.sort_values("date").tail(300)
+
+        stock_summary = small_df.to_csv(index=False)
+
+    system_instruction = """
+คุณคือ AI Agent ผู้ช่วยจัดการสต๊อคและการซื้อของสำหรับร้านค้า/ครัว
+ข้อมูลที่ให้คุณคือตาราง CSV จาก Google Sheets ซึ่งมีอย่างน้อย:
+- name: ชื่อสินค้า
+- qty: จำนวนที่ซื้อในแต่ละครั้ง
+- unit: หน่วย เช่น ฟอง, กิโล, แพ็ค
+- total_price: ราคารวมต่อบิลสำหรับสินค้านั้น
+- unit_price: ราคาต่อหน่วย
+- date: วันที่ซื้อ (รูปแบบ YYYY-MM-DD)
+
+บทบาทของคุณ:
+1. ตอบคำถามเกี่ยวกับ:
+   - ยอดใช้จ่ายรวม, รายเดือน, รายสินค้า
+   - เทรนด์ราคาต่อหน่วยของสินค้า
+   - เปรียบเทียบราคาสินค้าต่าง ๆ
+2. ให้คำแนะนำ:
+   - ควรสต๊อกอะไรเพิ่ม หรืออะไรเริ่มเยอะเกินไป (จากความถี่การซื้อ)
+   - แนวโน้มราคาสินค้า (ขึ้น/ลง) จากข้อมูลย้อนหลัง
+3. ถ้าข้อมูลไม่พอให้สรุปแนวคิดทั่วไปแทน แต่ให้บอกชัดว่า "ข้อมูลไม่พอ"
+
+กติกา:
+- ให้คำตอบเป็นภาษาไทย เข้าใจง่าย
+- ถ้าเป็นคำถามเชิงตัวเลข ให้สรุปเป็นข้อ ๆ หรือ bullet list สั้น ๆ
+- ถ้าผู้ใช้ถามนอกเหนือจากสต๊อคหรือการเงิน ให้ตอบแบบสั้น ๆ แล้วพยายามโยงกลับมาที่บริบทสต๊อค
+"""
+
+    prompt = f"""
+นี่คือข้อมูลสต๊อคและการซื้อสินค้าล่าสุดในรูปแบบ CSV:
+
+{stock_summary}
+
+คำถามจากผู้ใช้:
+{user_message}
+
+ให้ตอบเป็นภาษาไทย กระชับ และอ้างอิงจากข้อมูลใน CSV เท่าที่ทำได้
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=[
+                types.Part.from_text(text=system_instruction),
+                types.Part.from_text(text=prompt),
+            ]
+        )
+        return response.text
+    except Exception as e:
+        st.error(f"❌ AI Agent ตอบไม่ได้: {e}")
+        return "ตอนนี้ Agent มีปัญหาในการประมวลผล ลองใหม่ภายหลังหรือตรวจสอบการตั้งค่า API Key/Model"
+
+# --- 4. ฟังก์ชันบันทึกข้อมูลลง Google Sheets ---
+
 def save_data_to_sheets(df_to_save: pd.DataFrame):
     if conn is None:
         st.error("❌ ยังไม่สามารถเชื่อมต่อ Google Sheets ได้")
@@ -177,12 +272,18 @@ def save_data_to_sheets(df_to_save: pd.DataFrame):
         st.error(f"❌ บันทึกไม่ได้: {e}")
         return False
 
-# --- 4. ส่วนแสดงผล UI ---
+# --- 5. ส่วนแสดงผล UI ---
 
 st.sidebar.title("🚀 AI Stock Menu")
 page = st.sidebar.radio(
     "เลือกเมนู:",
-    ["📸 สแกนบิลใหม่", "🎙️ บันทึกด้วยเสียง", "📊 Dashboard", "📋 รายการสต๊อก"]
+    [
+        "📸 สแกนบิลใหม่",
+        "🎙️ บันทึกด้วยเสียง",
+        "📊 Dashboard",
+        "📋 รายการสต๊อก",
+        "🤖 AI Agent",
+    ]
 )
 
 # --- หน้าสแกนบิล ---
@@ -320,6 +421,53 @@ elif page == "📋 รายการสต๊อก":
         st.info("ยังไม่มีข้อมูลในฐานข้อมูล")
     else:
         st.dataframe(df, use_container_width=True)
+
+# --- หน้า AI Agent ---
+elif page == "🤖 AI Agent":
+    st.header("🤖 AI Stock Agent")
+    st.caption("คุยกับผู้ช่วยอัจฉริยะที่มองเห็นข้อมูลใน Google Sheets ของคุณ")
+
+    with st.expander("ตัวอย่างคำถามที่คุณอาจลองถาม", expanded=False):
+        st.markdown(
+            """
+- เดือนนี้ใช้เงินซื้อวัตถุดิบไปประมาณเท่าไหร่?
+- ช่วงหลัง ๆ ราคาต่อหน่วยของ 'ไข่ไก่เบอร์ 2' มีแนวโน้มขึ้นหรือลง?
+- สินค้าอะไรใช้เงินเยอะที่สุดในเดือนที่ผ่านมา?
+- ถ้าอยากลดต้นทุน ควรโฟกัสดูสินค้าตัวไหนก่อน?
+            """.strip()
+        )
+
+    if "agent_messages" not in st.session_state:
+        st.session_state.agent_messages = []
+
+    # แสดงประวัติการคุย
+    for role, msg in st.session_state.agent_messages:
+        if role == "user":
+            with st.chat_message("user"):
+                st.markdown(msg)
+        else:
+            with st.chat_message("assistant"):
+                st.markdown(msg)
+
+    # กล่อง chat input
+    user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับสต๊อคหรือการใช้จ่ายของคุณที่นี่...")
+
+    if user_input:
+        # เก็บข้อความของผู้ใช้
+        st.session_state.agent_messages.append(("user", user_input))
+
+        # แสดงทันที
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # ให้ Agent ตอบ
+        with st.chat_message("assistant"):
+            with st.spinner("Agent กำลังคิดจากข้อมูลสต๊อคของคุณ..."):
+                answer = chat_with_stock_agent(user_input)
+            st.markdown(answer)
+
+        # เก็บข้อความของ Agent
+        st.session_state.agent_messages.append(("assistant", answer))
 
 # ปุ่มพิเศษที่ Sidebar
 if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
