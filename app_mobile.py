@@ -49,7 +49,6 @@ def clean_html(raw_html):
     return soup.get_text(separator=' ')
 
 def fetch_delivery_emails():
-    """ดึงอีเมลจากทุกโฟลเดอร์ (Deep Search) เพื่อแก้ปัญหาหาไม่เจอใน INBOX"""
     user = st.secrets["gmail"]["user"]
     pwd = st.secrets["gmail"]["password"]
     
@@ -57,13 +56,16 @@ def fetch_delivery_emails():
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(user, pwd)
         
-        # เปลี่ยนจาก "INBOX" เป็น "[Gmail]/All Mail" เพื่อค้นหาจากทุกที่
-        # หากเกิด Error ให้ลองเปลี่ยนกลับเป็น "INBOX" หรือ "" (ว่าง)
-        mail.select('"[Gmail]/All Mail"') 
+        # --- จุดแก้ไขสำคัญ: เลือกห้อง INBOX และเช็คสถานะ ---
+        status, _ = mail.select("ALL")
+        if status != 'OK':
+            st.error("❌ ไม่สามารถเปิด INBOX ได้")
+            return []
+        # ----------------------------------------------
+
+        # วันที่ย้อนหลัง 7 วัน (มาตรฐาน IMAP: 22-Apr-2026)
+        date_cutoff = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
         
-        cutoff_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-        
-        # ค้นหาโดยเน้นผู้ส่ง (Email Sender) ซึ่งเสถียรที่สุด
         search_targets = [
             {"platform": "LINE MAN", "from": "no-reply-merchant@lmwn.com", "keyword": "รายงานยอดขาย"},
             {"platform": "ShopeeFood", "from": "noreply.th@shopeefood.com", "keyword": "รายงานการโอนเงิน"},
@@ -72,27 +74,24 @@ def fetch_delivery_emails():
         
         all_contents = []
         for target in search_targets:
-            # ค้นหาเฉพาะผู้ส่งและวันที่
-            status, data = mail.search(None, f'(FROM "{target["from"]}" SINCE {cutoff_date})')
+            # ค้นหาด้วย FROM และ SINCE (เป็นภาษาอังกฤษ 100% ปลอดภัยที่สุด)
+            query = f'(FROM "{target["from"]}" SINCE {date_cutoff})'
+            status, data = mail.search(None, query)
             
             if status == "OK" and data[0]:
                 email_ids = data[0].split()
-                st.sidebar.write(f"✅ พบอีเมลจาก {target['platform']} {len(email_ids)} ฉบับ")
-                
-                for e_id in reversed(email_ids): # ล่าสุดก่อน
+                for e_id in reversed(email_ids):
                     _, msg_data = mail.fetch(e_id, '(RFC822)')
                     msg = email.message_from_bytes(msg_data[0][1])
                     
                     # ถอดรหัสหัวข้อ
                     subject_raw = decode_header(msg.get("Subject"))
-                    subject_text = ""
-                    for content, encoding in subject_raw:
-                        if isinstance(content, bytes):
-                            subject_text += content.decode(encoding or "utf-8", errors="ignore")
-                        else:
-                            subject_text += str(content)
+                    subject_text = "".join(
+                        content.decode(encoding or "utf-8", errors="ignore") if isinstance(content, bytes) else str(content)
+                        for content, encoding in subject_raw
+                    )
                     
-                    # กรองเฉพาะอีเมลรายงาน
+                    # กรองเฉพาะอีเมลที่มี Keyword
                     if target["keyword"] in subject_text:
                         body = ""
                         if msg.is_multipart():
@@ -106,8 +105,6 @@ def fetch_delivery_emails():
                         
                         if body:
                             all_contents.append({"platform": target["platform"], "content": clean_html(body)})
-            else:
-                st.sidebar.warning(f"⚠️ ไม่พบอีเมลจาก {target['platform']}")
         
         mail.logout()
         return all_contents
