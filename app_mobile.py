@@ -277,4 +277,73 @@ elif page == "📊 Dashboard":
                 days_180_ago = today - pd.Timedelta(days=180)
                 days_30_ago = today - pd.Timedelta(days=30)
                 
-                item_df = item_df[item_df['date'] >= days_180_
+                item_df = item_df[item_df['date'] >= days_180_ago]
+                item_df = item_df.sort_values('date')
+                
+                if not item_df.empty:
+                    fig_line = px.line(
+                        item_df, 
+                        x='date', 
+                        y='unit_price', 
+                        markers=True, 
+                        title=f"การเปลี่ยนแปลงราคา: {selected_item} (ข้อมูลสูงสุด 180 วัน)"
+                    )
+                    
+                    # ตั้งค่ามุมมองเริ่มต้นที่ 30 วันย้อนหลัง และเพิ่มปุ่มเลื่อน/ซูม
+                    start_view = max(item_df['date'].min(), days_30_ago)
+                    
+                    fig_line.update_xaxes(
+                        range=[start_view, today],
+                        rangeslider_visible=True, # เปิดแถบเลื่อน (Slider)
+                        rangeselector=dict(       # เพิ่มปุ่มกดเลือกช่วงเวลา
+                            buttons=list([
+                                dict(count=30, label="30 วัน", step="day", stepmode="backward"),
+                                dict(count=90, label="3 เดือน", step="day", stepmode="backward"),
+                                dict(count=180, label="6 เดือน", step="day", stepmode="backward"),
+                                dict(step="all", label="ทั้งหมด")
+                            ])
+                        )
+                    )
+                    
+                    # เริ่มแกน Y ที่ 0 เพื่อให้เห็นความต่างชัดเจน
+                    fig_line.update_layout(yaxis_range=[0, item_df['unit_price'].max() * 1.2]) 
+                    st.plotly_chart(fig_line, use_container_width=True)
+                else:
+                    st.warning("ไม่พบข้อมูลราคาในช่วง 180 วันที่ผ่านมา")
+            else:
+                st.info("ยังไม่มีรายชื่อวัตถุดิบ")
+        else:
+            st.info("ยังไม่มีข้อมูลรายจ่ายวัตถุดิบในระบบ")
+
+    else: 
+        st.info("ยังไม่มีข้อมูลในระบบ หรือ โครงสร้างข้อมูลยังไม่สมบูรณ์")
+
+elif page == "📋 ข้อมูลทั้งหมด":
+    st.header("📋 ข้อมูลทั้งหมด")
+    df = load_data()
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("ยังไม่มีข้อมูล")
+
+elif page == "🤖 AI Agent":
+    st.header("🤖 AI Business Assistant")
+    st.caption("สอบถามกำไร ขาดทุน และพฤติกรรมการใช้จ่ายได้เลยครับ")
+    
+    if "agent_msgs" not in st.session_state: st.session_state.agent_msgs = []
+    for r, m in st.session_state.agent_msgs:
+        with st.chat_message(r): st.markdown(m)
+        
+    query = st.chat_input("พิมพ์คำถาม...")
+    if query:
+        st.session_state.agent_msgs.append(("user", query))
+        with st.chat_message("user"): st.markdown(query)
+        with st.chat_message("assistant"):
+            with st.spinner("Agent กำลังคิด..."):
+                ans = chat_with_stock_agent(query)
+            st.markdown(ans)
+        st.session_state.agent_msgs.append(("assistant", ans))
+
+if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
+    refresh_data_cache()
+    st.rerun()
