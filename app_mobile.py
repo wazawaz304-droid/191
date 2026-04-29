@@ -66,7 +66,6 @@ def call_gemini_with_fallback(prompt, contents=None, is_audio=False):
 def get_unique_products():
     df = load_data()
     if not df.empty and 'name' in df.columns:
-        # ดึงเฉพาะรายการที่ไม่ใช่ Income
         expense_df = df[df['type'] != 'Income'] if 'type' in df.columns else df
         return sorted([str(x) for x in expense_df['name'].dropna().unique()])
     return []
@@ -228,7 +227,6 @@ elif page == "📊 Dashboard":
     st.header("📊 สรุปผลกำไร-ขาดทุน")
     df = load_data()
     if not df.empty and 'type' in df.columns:
-        # ทำให้แน่ใจว่า total_price เป็นตัวเลข
         df['total_price'] = pd.to_numeric(df['total_price'], errors='coerce').fillna(0)
         
         inc = df[df['type'] == 'Income']
@@ -254,72 +252,29 @@ elif page == "📊 Dashboard":
             else:
                 st.info("ยังไม่มีข้อมูลรายจ่าย")
 
-        # --- เพิ่มกราฟ: การเปลี่ยนแปลงราคาวัตถุดิบ ---
+        # --- กราฟ: การเปลี่ยนแปลงราคาวัตถุดิบ (ซูม/เลื่อนได้) ---
         st.divider()
         st.subheader("📈 แนวโน้มราคาวัตถุดิบ (Price Fluctuation)")
         if not exp.empty:
-            # ดึงเฉพาะรายการที่มีชื่อวัตถุดิบ (ไม่เอาค่าว่าง)
             exp_items = exp.dropna(subset=['name']).copy()
-            items_list = exp_items['name'].unique()
+            items_list = sorted(exp_items['name'].unique())
             
             if len(items_list) > 0:
                 selected_item = st.selectbox("เลือกวัตถุดิบเพื่อดูแนวโน้มราคาต่อหน่วย:", items_list)
                 
-                # กรองข้อมูลเฉพาะวัตถุดิบที่เลือก และเรียงตามวันที่
                 item_df = exp_items[exp_items['name'] == selected_item].copy()
-                item_df['date'] = pd.to_datetime(item_df['date'], errors='coerce')
-                item_df = item_df.dropna(subset=['date']).sort_values('date')
                 
-                if not item_df.empty and 'unit_price' in item_df.columns:
-                    # บังคับ unit_price ให้เป็นตัวเลขเพื่อพลอตกราฟ
-                    item_df['unit_price'] = pd.to_numeric(item_df['unit_price'], errors='coerce').fillna(0)
-                    
-                    fig_line = px.line(
-                        item_df, 
-                        x='date', 
-                        y='unit_price', 
-                        markers=True, 
-                        title=f"การเปลี่ยนแปลงราคาต่อหน่วย: {selected_item}"
-                    )
-                    # กำหนดให้แกน Y เริ่มที่ 0 จะได้เห็นความต่างชัดเจน
-                    fig_line.update_layout(yaxis_range=[0, item_df['unit_price'].max() * 1.2]) 
-                    st.plotly_chart(fig_line, use_container_width=True)
-                else:
-                    st.warning("ไม่พบข้อมูลราคาต่อหน่วย (unit_price) สำหรับสินค้านี้")
-            else:
-                st.info("ยังไม่มีรายชื่อวัตถุดิบ")
-        else:
-            st.info("ยังไม่มีข้อมูลรายจ่ายวัตถุดิบในระบบ")
-
-    else: 
-        st.info("ยังไม่มีข้อมูลในระบบ หรือ โครงสร้างข้อมูลยังไม่สมบูรณ์")
-
-elif page == "📋 ข้อมูลทั้งหมด":
-    st.header("📋 ข้อมูลทั้งหมด")
-    df = load_data()
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.info("ยังไม่มีข้อมูล")
-
-elif page == "🤖 AI Agent":
-    st.header("🤖 AI Business Assistant")
-    st.caption("สอบถามกำไร ขาดทุน และพฤติกรรมการใช้จ่ายได้เลยครับ")
-    
-    if "agent_msgs" not in st.session_state: st.session_state.agent_msgs = []
-    for r, m in st.session_state.agent_msgs:
-        with st.chat_message(r): st.markdown(m)
-        
-    query = st.chat_input("พิมพ์คำถาม...")
-    if query:
-        st.session_state.agent_msgs.append(("user", query))
-        with st.chat_message("user"): st.markdown(query)
-        with st.chat_message("assistant"):
-            with st.spinner("Agent กำลังคิด..."):
-                ans = chat_with_stock_agent(query)
-            st.markdown(ans)
-        st.session_state.agent_msgs.append(("assistant", ans))
-
-if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
-    refresh_data_cache()
-    st.rerun()
+                # แปลงข้อมูลเป็น Datetime และ ตัวเลข
+                item_df['date'] = pd.to_datetime(item_df['date'], errors='coerce')
+                item_df['unit_price'] = pd.to_numeric(item_df['unit_price'], errors='coerce')
+                item_df = item_df.dropna(subset=['date', 'unit_price'])
+                
+                # หาค่าเฉลี่ยรายวันกรณีซื้อหลายบิลในวันเดียวกัน
+                item_df = item_df.groupby('date', as_index=False)['unit_price'].mean()
+                
+                # กรองข้อมูลย้อนหลังสูงสุด 180 วัน
+                today = pd.Timestamp.now()
+                days_180_ago = today - pd.Timedelta(days=180)
+                days_30_ago = today - pd.Timedelta(days=30)
+                
+                item_df = item_df[item_df['date'] >= days_180_
