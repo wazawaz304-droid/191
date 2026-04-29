@@ -9,12 +9,13 @@ import plotly.express as px
 from datetime import datetime
 
 # --- 1. การตั้งค่าหน้าจอ ---
-st.set_page_config(page_title="AI Business Master 2026", layout="wide", page_icon="💰")
+st.set_page_config(page_title="AI Stock Master 2026", layout="wide", page_icon="📦")
 
 # --- 2. การเชื่อมต่อ Google Sheets และ AI ---
 
 @st.cache_resource
 def get_conn():
+    """สร้างและ cache การเชื่อมต่อ Google Sheets"""
     try:
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
@@ -23,12 +24,30 @@ def get_conn():
 
 conn = get_conn()
 
-try:
-    client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
-except Exception as e:
-    st.error(f"⚠️ ไม่พบ API Key: {e}")
+# ดึง API Key จาก Secrets
+client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 
-# --- 2.1 ระบบ Cache และ Fallback Model ---
+# --- 2.1 Cache ข้อมูลจาก Google Sheets ---
+
+@st.cache_data(ttl=60)
+def load_data():
+    """โหลดข้อมูลทั้งหมดจาก Google Sheets พร้อม cache 60 วินาที"""
+    if conn is None:
+        return pd.DataFrame()
+    try:
+        df = conn.read(ttl=0)
+        if df is None:
+            return pd.DataFrame()
+        return df
+    except Exception as e:
+        st.error(f"⚠️ อ่านข้อมูลจาก Google Sheets ไม่ได้: {e}")
+        return pd.DataFrame()
+
+def refresh_data_cache():
+    """เคลียร์ cache ข้อมูล"""
+    load_data.clear()
+
+# --- 2.2 ระบบ Cache และ Fallback Model ---
 
 @st.cache_data(ttl=60)
 def load_data():
@@ -66,201 +85,409 @@ def call_gemini_with_fallback(prompt, contents=None, is_audio=False):
                 continue
     return None
 
-def safe_parse_json(text):
-    if not text: return []
+# ฟังก์ชันดึงรายชื่อสินค้าเดิม
+def get_unique_products():
+    df = load_data()
+    if not df.empty and 'name' in df.columns:
+        return sorted([str(x) for x in df['name'].dropna().unique()])
+    return []
+
+
+
+# ฟังก์ชันแกะ JSON อย่างปลอดภัย
+def safe_parse_json(text_response: str):
     try:
-        if "```" in text:
-            text = text.split("```")[1]
-            if text.startswith("json"): text = text[4:]
-        return json.loads(text.strip())
-    except:
+        content = text_response
+        if "```" in text_response:  
+            # กรณีตอบเป็น code block  
+            parts = text_response.split("```")
+            # เอาชิ้นที่อยู่ระหว่าง ``` ... ```
+            if len(parts) >= 2:
+                content = parts[1]
+            # ตัดคำว่า json ออกถ้ามี
+            if content.lstrip().startswith("json"):
+                content = content.lstrip()[4:]
+        return json.loads(content.strip())
+    except Exception:
+        st.error("❌ AI ส่งข้อมูลผิดรูปแบบ (ไม่ใช่ JSON ที่อ่านได้)")
         return []
 
-# --- 3. ฟังก์ชัน AI Engine ---
+# --- 3. ฟังก์ชัน AI สำหรับบิลรูปภาพและเสียง ---
 
-def process_stock_ai(data_input, is_audio=False, mime_type=None):
-    """วิเคราะห์บิล/เสียง (Expense)"""
-    df_temp = load_data()
-    existing_items = ", ".join(df_temp[df_temp['type'] != 'Income']['name'].unique().tolist()) if not df_temp.empty and 'name' in df_temp.columns else ""
-    
-    prompt = f"""
-    สกัดข้อมูลสินค้าเป็น JSON array: [{{ "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม }}]
-    เทียบชื่อเดิม: [{existing_items}] (หากคล้ายให้ใช้ชื่อเดิม)
-    ตอบแค่ PURE JSON เท่านั้น
-    """
-    if is_audio:
-        contents = [types.Content(role="user", parts=[
-            types.Part.from_text(text=prompt),
-            types.Part.from_bytes(data=data_input, mime_type=mime_type)
-        ])]
-        res_text = call_gemini_with_fallback(prompt, contents=contents, is_audio=True)
-    else:
-        res_text = call_gemini_with_fallback(prompt, contents=[data_input])
-    return safe_parse_json(res_text)
+def build_prompt_from_image(existing_items):
+    items_str = ", ".join(existing_items)
+    return f"""
+คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลสินค้าจากรูปภาพบิลเป็น JSON array เท่านั้น ในรูปแบบ:
 
-def process_delivery_income_ai(email_text):
-    """วิเคราะห์รายได้จากอีเมลแอป (Income)"""
-    prompt = """
-    สกัดข้อมูลรายได้เดลิเวอรี่เป็น JSON array:
-    [{{ "app": "Grab/LINE MAN/ShopeeFood", "gross_sales": ยอดรวม, "gp_amount": ค่า GP, "net_income": ยอดโอนสุทธิ }}]
-    ตอบแค่ PURE JSON
-    """
-    res_text = call_gemini_with_fallback(prompt, contents=[email_text])
-    return safe_parse_json(res_text)
+[{{ "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม }}]
 
-# --- 4. บันทึกข้อมูล ---
+กฎการแมตชื่อ:
+1. ตรวจสอบลิสต์เดิมที่มีในระบบ: [{items_str}]
+2. หากชื่อในบิล "คล้ายกันมาก" และน่าจะเป็นตัวเดียวกัน ให้ใช้ชื่อจากลิสต์เดิม
+3. หากเป็นสินค้าใหม่หรือชื่อจงใจให้ต่าง ให้ใช้ชื่อตามที่อ่านได้จากบิล
+ห้ามตอบคำอธิบายอื่น ๆ เพิ่ม ตอบเป็น PURE JSON เท่านั้น
+"""
 
-def save_to_sheets(df, data_type="Expense"):
-    if conn is None: return False
+def build_prompt_from_audio(existing_items):
+    items_str = ", ".join(existing_items)
+    return f"""
+คุณคือผู้ช่วยจัดการสต๊อค สกัดข้อมูลจากเสียงพูดเป็น JSON array เท่านั้น ในรูปแบบ:
+
+[{{ "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม }}]
+
+กฎการแมตชื่อ:
+1. ตรวจสอบกับลิสต์สินค้าเดิม: [{items_str}]
+2. หากพูดคล้ายรายการเดิม ให้ Match ชื่อให้ตรงกัน
+3. หากผู้พูดระบุว่าเป็นของใหม่ หรือชื่อต่างออกไป ให้ใช้ชื่อตามที่พูด
+ห้ามตอบคำอธิบายอื่น ๆ เพิ่ม ตอบเป็น PURE JSON เท่านั้น
+"""
+
+def process_with_ai(img):
+    existing_items = get_unique_products()
+    prompt = build_prompt_from_image(existing_items)
+
     try:
-        df['type'] = data_type
-        df['date'] = datetime.now().strftime("%Y-%m-%d")
-        
-        # จัดการข้อมูลตัวเลข
-        if data_type == "Expense":
-            df['qty'] = pd.to_numeric(df['qty'], errors='coerce').fillna(1)
-            df['total_price'] = pd.to_numeric(df['total_price'], errors='coerce').fillna(0)
-            df['unit_price'] = df['total_price'] / df['qty'].replace(0, 1)
-        else:
-            df['name'] = df['app'] + " Income"
-            df['total_price'] = pd.to_numeric(df['net_income'], errors='coerce').fillna(0)
-            df['qty'] = 1
-            
-        final_df = pd.concat([load_data(), df], ignore_index=True)
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=[prompt, img]
+        )
+        return safe_parse_json(response.text)
+    except Exception as e:
+        st.error(f"❌ เรียกใช้ AI ไม่สำเร็จ: {e}")
+        return []
+
+def process_audio_with_ai(audio_bytes, mime_type="audio/wav"):
+    existing_items = get_unique_products()
+    prompt_text = build_prompt_from_audio(existing_items)
+
+    try:
+        user_content = types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=prompt_text),
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+            ]
+        )
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=[user_content]
+        )
+        return safe_parse_json(response.text)
+    except Exception as e:
+        st.error(f"❌ AI ฟังไม่ถนัดหรือเกิดข้อผิดพลาด: {e}")
+        return []
+
+# --- 3.1 ฟังก์ชัน AI Agent (คุยกับข้อมูลสต๊อค) ---
+
+def chat_with_stock_agent(user_message: str):
+    """
+    ให้ AI Agent อ่านข้อมูลจาก Google Sheets (ผ่าน DataFrame) แล้วตอบคำถามเกี่ยวกับสต๊อค/การใช้จ่าย
+    """
+    df = load_data()
+
+    # เตรียมข้อมูลแบบย่อให้ AI เห็น (ลดขนาดถ้าข้อมูลเยอะ)
+    if df.empty:
+        stock_summary = "ตอนนี้ยังไม่มีข้อมูลสินค้าในระบบเลย"
+    else:
+        # เลือกคอลัมน์สำคัญ
+        cols = [c for c in df.columns if c in ["name", "qty", "unit", "total_price", "unit_price", "date"]]
+        small_df = df[cols].copy()
+
+        # ถ้าข้อมูลเยอะมาก ตัดให้เหลือเฉพาะล่าสุด 300 แถว
+        if len(small_df) > 300:
+            small_df = small_df.sort_values("date").tail(300)
+
+        stock_summary = small_df.to_csv(index=False)
+
+    system_instruction = """
+คุณคือ AI Agent ผู้ช่วยจัดการสต๊อคและการซื้อของสำหรับร้านค้า/ครัว
+ข้อมูลที่ให้คุณคือตาราง CSV จาก Google Sheets ซึ่งมีอย่างน้อย:
+- name: ชื่อสินค้า
+- qty: จำนวนที่ซื้อในแต่ละครั้ง
+- unit: หน่วย เช่น ฟอง, กิโล, แพ็ค
+- total_price: ราคารวมต่อบิลสำหรับสินค้านั้น
+- unit_price: ราคาต่อหน่วย
+- date: วันที่ซื้อ (รูปแบบ YYYY-MM-DD)
+
+บทบาทของคุณ:
+1. ตอบคำถามเกี่ยวกับ:
+   - ยอดใช้จ่ายรวม, รายเดือน, รายสินค้า
+   - เทรนด์ราคาต่อหน่วยของสินค้า
+   - เปรียบเทียบราคาสินค้าต่าง ๆ
+2. ให้คำแนะนำ:
+   - ควรสต๊อกอะไรเพิ่ม หรืออะไรเริ่มเยอะเกินไป (จากความถี่การซื้อ)
+   - แนวโน้มราคาสินค้า (ขึ้น/ลง) จากข้อมูลย้อนหลัง
+3. ถ้าข้อมูลไม่พอให้สรุปแนวคิดทั่วไปแทน แต่ให้บอกชัดว่า "ข้อมูลไม่พอ"
+
+กติกา:
+- ให้คำตอบเป็นภาษาไทย เข้าใจง่าย
+- ถ้าเป็นคำถามเชิงตัวเลข ให้สรุปเป็นข้อ ๆ หรือ bullet list สั้น ๆ
+- ถ้าผู้ใช้ถามนอกเหนือจากสต๊อคหรือการเงิน ให้ตอบแบบสั้น ๆ แล้วพยายามโยงกลับมาที่บริบทสต๊อค
+"""
+
+    prompt = f"""
+นี่คือข้อมูลสต๊อคและการซื้อสินค้าล่าสุดในรูปแบบ CSV:
+
+{stock_summary}
+
+คำถามจากผู้ใช้:
+{user_message}
+
+ให้ตอบเป็นภาษาไทย กระชับ และอ้างอิงจากข้อมูลใน CSV เท่าที่ทำได้
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=[
+                types.Part.from_text(text=system_instruction),
+                types.Part.from_text(text=prompt),
+            ]
+        )
+        return response.text
+    except Exception as e:
+        st.error(f"❌ AI Agent ตอบไม่ได้: {e}")
+        return "ตอนนี้ Agent มีปัญหาในการประมวลผล ลองใหม่ภายหลังหรือตรวจสอบการตั้งค่า API Key/Model"
+
+# --- 4. ฟังก์ชันบันทึกข้อมูลลง Google Sheets ---
+
+def save_data_to_sheets(df_to_save: pd.DataFrame):
+    if conn is None:
+        st.error("❌ ยังไม่สามารถเชื่อมต่อ Google Sheets ได้")
+        return False
+
+    try:
+        if df_to_save.empty:
+            st.warning("ไม่มีข้อมูลให้บันทึก")
+            return False
+
+        # แปลงคอลัมน์ qty / total_price ให้เป็นตัวเลข
+        df_to_save['qty'] = pd.to_numeric(df_to_save['qty'], errors="coerce")
+        df_to_save['total_price'] = pd.to_numeric(df_to_save['total_price'], errors="coerce")
+
+        # ตัดแถวที่ข้อมูลไม่ครบหรือ qty=0 ออก
+        df_to_save = df_to_save.dropna(subset=['qty', 'total_price'])
+        df_to_save = df_to_save[df_to_save['qty'] != 0]
+
+        if df_to_save.empty:
+            st.warning("ข้อมูลไม่ถูกต้อง: qty เป็น 0 หรือค่าราคา/จำนวนว่าง")
+            return False
+
+        df_to_save['date'] = datetime.now().strftime("%Y-%m-%d")
+        df_to_save['unit_price'] = df_to_save['total_price'] / df_to_save['qty']
+
+        existing_df = load_data()
+        final_df = pd.concat([existing_df, df_to_save], ignore_index=True)
+
         conn.update(data=final_df)
-        st.success(f"✅ บันทึก {data_type} สำเร็จ!")
+        st.success("✅ บันทึกลง Google Sheets สำเร็จ!")
+
+        # รีเฟรช cache
         refresh_data_cache()
         return True
+
     except Exception as e:
         st.error(f"❌ บันทึกไม่ได้: {e}")
         return False
 
-# --- 5. UI ---
+# --- 5. ส่วนแสดงผล UI ---
 
-st.sidebar.title("🚀 AI Business Master")
-page = st.sidebar.radio("เลือกเมนู:", ["📸 สแกนบิล", "🎙️ บันทึกเสียง", "💰 รายรับเดลิเวอรี่", "📊 Dashboard", "📋 ข้อมูลทั้งหมด", "🤖 AI Agent"])
+st.sidebar.title("🚀 AI Stock Menu")
+page = st.sidebar.radio(
+    "เลือกเมนู:",
+    [
+        "📸 สแกนบิลใหม่",
+        "🎙️ บันทึกด้วยเสียง",
+        "📊 Dashboard",
+        "📋 รายการสต๊อก",
+        "🤖 AI Agent",
+    ]
+)
 
-if page == "📸 สแกนบิล":
-    st.header("📸 สแกนบิลวัตถุดิบ")
-    mode = st.radio("วิธีนำเข้า:", ["ยังไม่เลือก", "📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
-    img_file = st.camera_input("สแกน") if mode == "📷 ถ่ายรูปสด" else st.file_uploader("เลือกรูป", type=['jpg','png','jpeg']) if mode == "📁 เลือกไฟล์" else None
-    
-    if img_file and st.button("🪄 เริ่มวิเคราะห์"):
-        with st.spinner("AI 3.1 Lite กำลังอ่านบิล..."):
-            res = process_stock_ai(Image.open(img_file))
-            if res: st.session_state.stock_data = pd.DataFrame(res)
-            else: st.warning("อ่านบิลไม่ออก กรุณาลองใหม่อีกครั้ง")
-            
-    if 'stock_data' in st.session_state and not st.session_state.stock_data.empty:
-        st.subheader("📝 ตรวจสอบและแก้ไข")
-        edited = st.data_editor(st.session_state.stock_data, use_container_width=True, num_rows="dynamic",
-                               column_config={"name": st.column_config.TextColumn("ชื่อสินค้า (พิมพ์ใหม่ได้อิสระ)")})
-        if st.button("💾 บันทึกค่าวัตถุดิบ"):
-            if save_to_sheets(edited, "Expense"):
-                del st.session_state.stock_data
+# --- หน้าสแกนบิล ---
+if page == "📸 สแกนบิลใหม่":
+    st.header("📸 สแกนบิลเข้าสต๊อก")
+    input_type = st.radio("วิธีนำเข้า:", ["ยังไม่เลือก", "📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
+
+    img_file = None
+    if input_type == "📷 ถ่ายรูปสด":
+        img_file = st.camera_input("สแกนบิล")
+    elif input_type == "📁 เลือกไฟล์":
+        img_file = st.file_uploader("เลือกรูปภาพ", type=['jpg', 'png', 'jpeg'])
+
+    if img_file:
+        img = Image.open(img_file)
+        if st.button("🪄 เริ่มสแกน", disabled=st.session_state.get("scanning", False)):
+            st.session_state.scanning = True
+            with st.spinner('กำลังอ่านบิลด้วย AI...'):
+                data = process_with_ai(img)
+            st.session_state.scanning = False
+
+            if data:
+                st.session_state.bill_data = pd.DataFrame(data)
+            else:
+                st.warning("AI ยังอ่านบิลไม่ออก ลองถ่ายให้ชัดขึ้นหรืออีกมุมหนึ่ง")
+
+    if 'bill_data' in st.session_state:
+        st.subheader("📝 ตรวจสอบและแก้ไข (พิมพ์ชื่อใหม่ได้อิสระ)")
+        edited_df = st.data_editor(
+            st.session_state.bill_data,
+            use_container_width=True,
+            num_rows="dynamic",
+            column_config={
+                "name": st.column_config.TextColumn(
+                    "ชื่อสินค้า",
+                    help="แก้ไขชื่อได้ทันทีหาก AI แมตผิด",
+                    width="large"
+                ),
+                "qty": st.column_config.NumberColumn("จำนวน", min_value=0),
+                "unit": st.column_config.TextColumn("หน่วย"),
+                "total_price": st.column_config.NumberColumn("ราคารวม", format="%.2f ฿")
+            }
+        )
+        if st.button("💾 ยืนยันบันทึกข้อมูล"):
+            if save_data_to_sheets(edited_df):
+                del st.session_state.bill_data
                 st.rerun()
 
-elif page == "🎙️ บันทึกเสียง":
-    st.header("🎙️ บันทึกด้วยเสียง")
-    audio = st.audio_input("พูดรายการสินค้า (เช่น ไข่ไก่ 2 แผง 240 บาท)")
-    if audio and st.button("🚀 แปลงเป็นข้อมูล"):
-        with st.spinner("AI กำลังฟัง..."):
-            res = process_stock_ai(audio.read(), is_audio=True, mime_type=audio.type)
-            if res: st.session_state.voice_data = pd.DataFrame(res)
-            else: st.warning("AI ฟังไม่ชัด ลองพูดใหม่อีกครั้ง")
-            
-    if 'voice_data' in st.session_state and not st.session_state.voice_data.empty:
-        st.subheader("📝 ตรวจสอบและแก้ไข")
-        edited = st.data_editor(st.session_state.voice_data, use_container_width=True, num_rows="dynamic",
-                               column_config={"name": st.column_config.TextColumn("ชื่อสินค้า (พิมพ์ใหม่ได้อิสระ)")})
-        if st.button("💾 บันทึกลงสต๊อก"):
-            if save_to_sheets(edited, "Expense"):
+# --- หน้าบันทึกด้วยเสียง ---
+elif page == "🎙️ บันทึกด้วยเสียง":
+    st.header("🎙️ บันทึกรายการด้วยเสียง")
+    audio_value = st.audio_input("กดปุ่มไมค์เพื่อเริ่มพูด (เช่น 'ไข่ไก่เบอร์ 2 จำนวน 30 ฟอง ราคา 120 บาท')")
+
+    if audio_value:
+        if st.button("🚀 แปลงเสียงเป็นข้อมูล", disabled=st.session_state.get("listening", False)):
+            st.session_state.listening = True
+            with st.spinner('AI กำลังฟัง...'):
+                res_data = process_audio_with_ai(audio_value.read(), mime_type=audio_value.type)
+            st.session_state.listening = False
+
+            if res_data:
+                st.session_state.voice_data = pd.DataFrame(res_data)
+            else:
+                st.warning("AI ฟังไม่ชัดหรือถอดความไม่ได้ ลองพูดใหม่ให้ชัดขึ้น")
+
+    if 'voice_data' in st.session_state:
+        st.subheader("📝 ตรวจสอบข้อมูล (พิมพ์แก้ไขได้อิสระ)")
+        edited_voice_df = st.data_editor(
+            st.session_state.voice_data,
+            use_container_width=True,
+            num_rows="dynamic",
+            column_config={
+                "name": st.column_config.TextColumn("ชื่อสินค้า", width="large"),
+                "qty": st.column_config.NumberColumn("จำนวน", min_value=0),
+                "unit": st.column_config.TextColumn("หน่วย"),
+                "total_price": st.column_config.NumberColumn("ราคารวม", format="%.2f ฿")
+            }
+        )
+        if st.button("💾 ยืนยันบันทึกจากเสียง"):
+            if save_data_to_sheets(edited_voice_df):
                 del st.session_state.voice_data
                 st.rerun()
 
-elif page == "💰 รายรับเดลิเวอรี่":
-    st.header("💰 รายรับจากแอปเดลิเวอรี่")
-    email_txt = st.text_area("วางเนื้อหาอีเมลรายงานยอดขาย (Grab/LINE MAN/ShopeeFood) ที่นี่:", height=250)
-    if st.button("🪄 วิเคราะห์รายได้"):
-        with st.spinner("AI กำลังคำนวณยอด..."):
-            res = process_delivery_income_ai(email_txt)
-            if res: st.session_state.inc_data = pd.DataFrame(res)
-            else: st.warning("วิเคราะห์ไม่สำเร็จ โปรดตรวจสอบข้อความที่คัดลอกมา")
-            
-    if 'inc_data' in st.session_state and not st.session_state.inc_data.empty:
-        st.subheader("📝 ตรวจสอบรายได้")
-        edited = st.data_editor(st.session_state.inc_data, use_container_width=True)
-        if st.button("💾 บันทึกรายรับ"):
-            if save_to_sheets(edited, "Income"):
-                del st.session_state.inc_data
-                st.rerun()
-
+# --- หน้า Dashboard ---
 elif page == "📊 Dashboard":
-    st.header("📊 สรุปผลกำไร-ขาดทุน")
+    st.header("📊 วิเคราะห์รายจ่าย")
     df = load_data()
-    if not df.empty and 'type' in df.columns:
-        # ทำให้แน่ใจว่า total_price เป็นตัวเลข
-        df['total_price'] = pd.to_numeric(df['total_price'], errors='coerce').fillna(0)
-        
-        inc = df[df['type'] == 'Income']
-        exp = df[df['type'] == 'Expense']
-        t_inc = inc['total_price'].sum() if not inc.empty else 0
-        t_exp = exp['total_price'].sum() if not exp.empty else 0
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("รายรับเดลิเวอรี่ทั้งหมด", f"฿{t_inc:,.2f}")
-        c2.metric("รายจ่ายวัตถุดิบทั้งหมด", f"฿{t_exp:,.2f}")
-        c3.metric("กำไรเบื้องต้น", f"฿{t_inc - t_exp:,.2f}", delta_color="normal")
-        
-        st.divider()
-        col_l, col_r = st.columns(2)
-        with col_l:
-            if not inc.empty: 
-                st.plotly_chart(px.bar(inc, x='date', y='total_price', color='name', title="รายรับแยกตามแอป"), use_container_width=True)
-            else:
-                st.info("ยังไม่มีข้อมูลรายรับ")
-        with col_r:
-            if not exp.empty: 
-                st.plotly_chart(px.pie(exp, values='total_price', names='name', title="สัดส่วนรายจ่ายวัตถุดิบ"), use_container_width=True)
-            else:
-                st.info("ยังไม่มีข้อมูลรายจ่าย")
-    else: 
-        st.info("ยังไม่มีข้อมูลในระบบ หรือ โครงสร้างข้อมูลยังไม่สมบูรณ์")
 
-elif page == "📋 ข้อมูลทั้งหมด":
-    st.header("📋 ประวัติรายการทั้งหมด")
-    df = load_data()
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
+    if df.empty:
+        st.info("ยังไม่มีข้อมูลในฐานข้อมูล")
     else:
-        st.info("ยังไม่มีข้อมูล")
+        required_cols = {"name", "total_price", "date", "unit_price"}
+        if not required_cols.issubset(df.columns):
+            st.warning("ข้อมูลยังไม่ครบ (ต้องมี name, total_price, date, unit_price) ลองบันทึกข้อมูลจากบิลหรือเสียงก่อน")
+        else:
+            df = df.copy()
+            df['date'] = pd.to_datetime(df['date'], errors="coerce")
+            df = df.dropna(subset=['date'])
 
-elif page == "🤖 AI Agent":
-    st.header("🤖 AI Business Assistant")
-    if "msgs" not in st.session_state: st.session_state.msgs = []
-    
-    for r, m in st.session_state.msgs:
-        with st.chat_message(r): st.markdown(m)
-    
-    query = st.chat_input("ถามเกี่ยวกับยอดขาย กำไร หรือสต๊อก...")
-    if query:
-        st.session_state.msgs.append(("user", query))
-        with st.chat_message("user"): st.markdown(query)
-        
-        # ดึงข้อมูลล่าสุด 150 แถวเพื่อไม่ให้เกิน Limit Token
-        df_agent = load_data()
-        csv_data = df_agent.tail(150).to_csv(index=False) if not df_agent.empty else "ไม่มีข้อมูล"
-        sys_msg = "คุณคือที่ปรึกษาธุรกิจร้าน Nave Mee Kai Cheek @ 304 ข้อมูล CSV ประกอบด้วย Income (รายรับ) และ Expense (รายจ่าย) ช่วยวิเคราะห์และตอบเป็นภาษาไทยอย่างกระชับ"
-        full_prompt = f"Data:\n{csv_data}\n\nQuestion: {query}"
-        
-        with st.spinner("Agent กำลังคิด..."):
-            ans = call_gemini_with_fallback(sys_msg, contents=[full_prompt])
-            if ans:
-                st.session_state.msgs.append(("assistant", ans))
-                with st.chat_message("assistant"): st.markdown(ans)
+            if df.empty:
+                st.info("ยังไม่มีข้อมูลวันที่ ที่สามารถนำมาวิเคราะห์ได้")
             else:
-                st.error("Agent ไม่สามารถตอบได้ในขณะนี้ โปรดลองใหม่")
+                c1, c2 = st.columns(2)
+                with c1:
+                    fig_pie = px.pie(
+                        df,
+                        values='total_price',
+                        names='name',
+                        hole=0.4,
+                        title="💰 สัดส่วนรายจ่าย"
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
 
+                with c2:
+                    items = df['name'].dropna().unique()
+                    if len(items) == 0:
+                        st.info("ยังไม่มีชื่อสินค้าให้เลือก")
+                    else:
+                        target = st.selectbox("เลือกสินค้า:", items)
+                        item_df = df[df['name'] == target].sort_values('date')
+                        fig_line = px.line(
+                            item_df,
+                            x='date',
+                            y='unit_price',
+                            markers=True,
+                            title=f"📈 ราคาต่อหน่วย: {target}"
+                        )
+                        st.plotly_chart(fig_line, use_container_width=True)
+
+# --- หน้าตารางทั้งหมด ---
+elif page == "📋 รายการสต๊อก":
+    st.header("📋 ข้อมูลทั้งหมด")
+    df = load_data()
+    if df.empty:
+        st.info("ยังไม่มีข้อมูลในฐานข้อมูล")
+    else:
+        st.dataframe(df, use_container_width=True)
+
+# --- หน้า AI Agent ---
+elif page == "🤖 AI Agent":
+    st.header("🤖 AI Stock Agent")
+    st.caption("คุยกับผู้ช่วยอัจฉริยะที่มองเห็นข้อมูลใน Google Sheets ของคุณ")
+
+    with st.expander("ตัวอย่างคำถามที่คุณอาจลองถาม", expanded=False):
+        st.markdown(
+            """
+- เดือนนี้ใช้เงินซื้อวัตถุดิบไปประมาณเท่าไหร่?
+- ช่วงหลัง ๆ ราคาต่อหน่วยของ 'ไข่ไก่เบอร์ 2' มีแนวโน้มขึ้นหรือลง?
+- สินค้าอะไรใช้เงินเยอะที่สุดในเดือนที่ผ่านมา?
+- ถ้าอยากลดต้นทุน ควรโฟกัสดูสินค้าตัวไหนก่อน?
+            """.strip()
+        )
+
+    if "agent_messages" not in st.session_state:
+        st.session_state.agent_messages = []
+
+    # แสดงประวัติการคุย
+    for role, msg in st.session_state.agent_messages:
+        if role == "user":
+            with st.chat_message("user"):
+                st.markdown(msg)
+        else:
+            with st.chat_message("assistant"):
+                st.markdown(msg)
+
+    # กล่อง chat input
+    user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับสต๊อคหรือการใช้จ่ายของคุณที่นี่...")
+
+    if user_input:
+        # เก็บข้อความของผู้ใช้
+        st.session_state.agent_messages.append(("user", user_input))
+
+        # แสดงทันที
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # ให้ Agent ตอบ
+        with st.chat_message("assistant"):
+            with st.spinner("Agent กำลังคิดจากข้อมูลสต๊อคของคุณ..."):
+                answer = chat_with_stock_agent(user_input)
+            st.markdown(answer)
+
+        # เก็บข้อความของ Agent
+        st.session_state.agent_messages.append(("assistant", answer))
+
+# ปุ่มพิเศษที่ Sidebar
 if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
     refresh_data_cache()
     st.rerun()
