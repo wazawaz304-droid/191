@@ -39,8 +39,7 @@ def load_data():
 def refresh_data_cache():
     load_data.clear()
 
-def call_gemini_with_fallback(prompt, contents=None, is_audio=False):
-    """ระบบสลับโมเดลอัตโนมัติ: เน้น 3.1 Lite เป็นตัวหลัก เพื่อแก้ปัญหา Quota เต็ม"""
+def call_gemini_with_fallback(prompt, contents=None, is_complex_content=False):
     model_list = [
         "models/gemini-3.1-flash-lite-preview", 
         "models/gemini-2.0-flash-lite",          
@@ -49,14 +48,14 @@ def call_gemini_with_fallback(prompt, contents=None, is_audio=False):
     
     for model_name in model_list:
         try:
-            if is_audio:
+            if is_complex_content:
                 response = client.models.generate_content(model=model_name, contents=contents)
             else:
                 input_parts = [prompt] + contents if contents else [prompt]
                 response = client.models.generate_content(model=model_name, contents=input_parts)
             return response.text
         except Exception as e:
-            if "429" in str(e): # ถ้าโควตาเต็ม ข้ามไปตัวถัดไปเงียบๆ
+            if "429" in str(e):
                 continue
             else:
                 st.warning(f"⚠️ {model_name} พบปัญหา: {e}")
@@ -86,45 +85,49 @@ def safe_parse_json(text_response: str):
 
 # --- 3. ฟังก์ชัน AI Engine ---
 
-def process_stock_ai(data_input, is_audio=False, mime_type=None):
+def process_stock_ai(data_input, is_bytes=False, mime_type=None):
     existing_items = ", ".join(get_unique_products())
     prompt = f"""
-    สกัดข้อมูลสินค้าเป็น JSON array: [{{ "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม }}]
-    เทียบชื่อเดิม: [{existing_items}] (หากคล้ายให้ใช้ชื่อเดิม)
+    สกัดข้อมูลสินค้าเป็น JSON array: [{{ "date": "YYYY-MM-DD", "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม }}]
+    - date: หาวันที่ในบิลให้อยู่ในรูปแบบ YYYY-MM-DD (ถ้าไม่มีให้ปล่อยว่าง)
+    - name: เทียบชื่อเดิม [{existing_items}] หากคล้ายให้ใช้ชื่อเดิม
     ตอบแค่ PURE JSON
     """
-    if is_audio:
+    if is_bytes:
         contents = [types.Content(role="user", parts=[
             types.Part.from_text(text=prompt),
             types.Part.from_bytes(data=data_input, mime_type=mime_type)
         ])]
-        res_text = call_gemini_with_fallback(prompt, contents=contents, is_audio=True)
+        res_text = call_gemini_with_fallback(prompt, contents=contents, is_complex_content=True)
     else:
         res_text = call_gemini_with_fallback(prompt, contents=[data_input])
     return safe_parse_json(res_text)
 
-def process_delivery_income_ai(email_text):
+def process_delivery_income_ai(data_input, is_bytes=False, mime_type=None):
     prompt = """
-    สกัดข้อมูลรายได้จากอีเมลเดลิเวอรี่เป็น JSON array:
-    [{{ "app": "Grab/LINE MAN/ShopeeFood", "gross_sales": ยอดรวม, "gp_amount": ค่า GP, "net_income": ยอดโอนสุทธิ }}]
+    สกัดข้อมูลรายได้จากรายงานเดลิเวอรี่เป็น JSON array:
+    [{{ "date": "YYYY-MM-DD", "app": "Grab/LINE MAN/ShopeeFood", "gross_sales": ยอดรวม, "gp_amount": ค่า GP, "net_income": ยอดโอนสุทธิ }}]
+    - date: ดึงวันที่ประจำรอบบิลนั้นให้อยู่ในรูปแบบ YYYY-MM-DD
     ตอบแค่ PURE JSON
     """
-    res_text = call_gemini_with_fallback(prompt, contents=[email_text])
+    if is_bytes:
+        contents = [types.Content(role="user", parts=[
+            types.Part.from_text(text=prompt),
+            types.Part.from_bytes(data=data_input, mime_type=mime_type)
+        ])]
+        res_text = call_gemini_with_fallback(prompt, contents=contents, is_complex_content=True)
+    else:
+        res_text = call_gemini_with_fallback(prompt, contents=[data_input])
     return safe_parse_json(res_text)
 
 def chat_with_stock_agent(user_message: str):
     df = load_data()
-    if df.empty:
-        stock_summary = "ไม่มีข้อมูล"
-    else:
-        stock_summary = df.tail(300).to_csv(index=False)
-
+    stock_summary = "ไม่มีข้อมูล" if df.empty else df.tail(300).to_csv(index=False)
     system_instruction = """
 คุณคือ AI Agent ที่ปรึกษาธุรกิจร้านอาหาร ข้อมูลที่ให้มี 'type' (Income=รายรับ, Expense=รายจ่ายวัตถุดิบ)
-ให้วิเคราะห์กำไร, แนวโน้มค่าใช้จ่าย และรายรับจากแอปต่างๆ เป็นภาษาไทยอย่างกระชับ
+ให้วิเคราะห์กำไร แนวโน้มค่าใช้จ่าย และรายรับ เป็นภาษาไทยอย่างกระชับ
 """
     prompt = f"ข้อมูลบัญชี:\n{stock_summary}\n\nคำถาม: {user_message}"
-    
     res = call_gemini_with_fallback(system_instruction, contents=[prompt])
     return res if res else "ขออภัยครับ ระบบประมวลผลมีปัญหาชั่วคราว"
 
@@ -136,7 +139,12 @@ def save_data_to_sheets(df_to_save: pd.DataFrame, data_type="Expense"):
         if df_to_save.empty: return False
         
         df_to_save['type'] = data_type
-        df_to_save['date'] = datetime.now().strftime("%Y-%m-%d")
+        
+        if 'date' not in df_to_save.columns:
+            df_to_save['date'] = datetime.now().strftime("%Y-%m-%d")
+        else:
+            df_to_save['date'] = df_to_save['date'].fillna(datetime.now().strftime("%Y-%m-%d"))
+            df_to_save['date'] = df_to_save['date'].replace("", datetime.now().strftime("%Y-%m-%d"))
         
         if data_type == "Expense":
             df_to_save['qty'] = pd.to_numeric(df_to_save['qty'], errors="coerce").fillna(1)
@@ -172,7 +180,7 @@ if page == "📸 สแกนบิล":
     
     if img_file and st.button("🪄 เริ่มสแกน", disabled=st.session_state.get("scanning", False)):
         st.session_state.scanning = True
-        with st.spinner("AI 3.1 Lite กำลังอ่านบิล..."):
+        with st.spinner("AI กำลังอ่านบิล..."):
             res = process_stock_ai(Image.open(img_file))
             if res: st.session_state.stock_data = pd.DataFrame(res)
             else: st.warning("AI อ่านบิลไม่ออก ลองถ่ายให้ชัดขึ้นครับ")
@@ -189,11 +197,11 @@ if page == "📸 สแกนบิล":
 
 elif page == "🎙️ บันทึกเสียง":
     st.header("🎙️ บันทึกด้วยเสียง")
-    audio = st.audio_input("พูดรายการสินค้า (เช่น ไข่ไก่ 2 แผง 240 บาท)")
+    audio = st.audio_input("พูดรายการสินค้า...")
     if audio and st.button("🚀 แปลงเป็นข้อมูล", disabled=st.session_state.get("listening", False)):
         st.session_state.listening = True
         with st.spinner("AI กำลังฟัง..."):
-            res = process_stock_ai(audio.read(), is_audio=True, mime_type=audio.type)
+            res = process_stock_ai(audio.read(), is_bytes=True, mime_type=audio.type)
             if res: st.session_state.voice_data = pd.DataFrame(res)
             else: st.warning("AI ฟังไม่ถนัด โปรดลองอีกครั้ง")
         st.session_state.listening = False
@@ -209,13 +217,33 @@ elif page == "🎙️ บันทึกเสียง":
 
 elif page == "💰 รายรับเดลิเวอรี่":
     st.header("💰 รายรับจากแอปเดลิเวอรี่")
-    email_txt = st.text_area("วางเนื้อหาอีเมลรายงานยอดขาย (Grab/LINE MAN/ShopeeFood) ที่นี่:", height=200)
-    if st.button("🪄 วิเคราะห์รายได้"):
-        with st.spinner("AI กำลังคำนวณยอด..."):
-            res = process_delivery_income_ai(email_txt)
-            if res: st.session_state.inc_data = pd.DataFrame(res)
+    
+    # --- อัปเกรด: เลือกว่าจะวางข้อความ หรือ โยนไฟล์ PDF ---
+    input_method = st.radio("วิธีนำเข้าข้อมูล:", ["📝 วางข้อความ (LINE MAN/Shopee)", "📁 อัปโหลดไฟล์ PDF/รูปภาพ (Grab)"], horizontal=True)
+    
+    res = None
+    if input_method == "📝 วางข้อความ (LINE MAN/Shopee)":
+        email_txt = st.text_area("วางเนื้อหาอีเมลรายงานยอดขายที่นี่:", height=200)
+        if st.button("🪄 วิเคราะห์รายได้"):
+            with st.spinner("AI กำลังคำนวณยอด..."):
+                res = process_delivery_income_ai(email_txt)
+                if not res: st.warning("วิเคราะห์ไม่สำเร็จ โปรดตรวจสอบข้อความ")
+    else:
+        file_upload = st.file_uploader("เลือกไฟล์รายงานยอดขาย (PDF, JPG, PNG)", type=['pdf', 'jpg', 'jpeg', 'png'])
+        if file_upload and st.button("🪄 วิเคราะห์ไฟล์รายได้"):
+            with st.spinner("AI กำลังอ่านไฟล์ PDF/รูปภาพ..."):
+                if file_upload.type == 'application/pdf':
+                    # ส่งไฟล์ PDF ให้ AI อ่านโดยตรง
+                    res = process_delivery_income_ai(file_upload.read(), is_bytes=True, mime_type=file_upload.type)
+                else:
+                    # ถ้าเป็นรูปภาพ ก็ใช้ Image.open เหมือนสแกนบิล
+                    res = process_delivery_income_ai(Image.open(file_upload))
+                if not res: st.warning("วิเคราะห์ไม่สำเร็จ โปรดตรวจสอบไฟล์อีกครั้ง")
             
-    if 'inc_data' in st.session_state:
+    if res:
+        st.session_state.inc_data = pd.DataFrame(res)
+            
+    if 'inc_data' in st.session_state and not st.session_state.inc_data.empty:
         st.subheader("📝 ตรวจสอบยอดสุทธิ")
         edited = st.data_editor(st.session_state.inc_data, use_container_width=True)
         if st.button("💾 บันทึกรายรับ"):
@@ -243,7 +271,8 @@ elif page == "📊 Dashboard":
         col_l, col_r = st.columns(2)
         with col_l:
             if not inc.empty: 
-                st.plotly_chart(px.bar(inc, x='date', y='total_price', color='name', title="รายรับแยกตามแอป"), use_container_width=True)
+                inc_sorted = inc.sort_values('date')
+                st.plotly_chart(px.bar(inc_sorted, x='date', y='total_price', color='name', title="รายรับแยกตามแอป"), use_container_width=True)
             else:
                 st.info("ยังไม่มีข้อมูลรายรับ")
         with col_r:
@@ -252,7 +281,6 @@ elif page == "📊 Dashboard":
             else:
                 st.info("ยังไม่มีข้อมูลรายจ่าย")
 
-        # --- กราฟ: การเปลี่ยนแปลงราคาวัตถุดิบ (ซูม/เลื่อนได้) ---
         st.divider()
         st.subheader("📈 แนวโน้มราคาวัตถุดิบ (Price Fluctuation)")
         if not exp.empty:
@@ -261,18 +289,14 @@ elif page == "📊 Dashboard":
             
             if len(items_list) > 0:
                 selected_item = st.selectbox("เลือกวัตถุดิบเพื่อดูแนวโน้มราคาต่อหน่วย:", items_list)
-                
                 item_df = exp_items[exp_items['name'] == selected_item].copy()
                 
-                # แปลงข้อมูลเป็น Datetime และ ตัวเลข
                 item_df['date'] = pd.to_datetime(item_df['date'], errors='coerce')
                 item_df['unit_price'] = pd.to_numeric(item_df['unit_price'], errors='coerce')
                 item_df = item_df.dropna(subset=['date', 'unit_price'])
                 
-                # หาค่าเฉลี่ยรายวันกรณีซื้อหลายบิลในวันเดียวกัน
                 item_df = item_df.groupby('date', as_index=False)['unit_price'].mean()
                 
-                # กรองข้อมูลย้อนหลังสูงสุด 180 วัน
                 today = pd.Timestamp.now()
                 days_180_ago = today - pd.Timedelta(days=180)
                 days_30_ago = today - pd.Timedelta(days=30)
@@ -281,31 +305,15 @@ elif page == "📊 Dashboard":
                 item_df = item_df.sort_values('date')
                 
                 if not item_df.empty:
+                    item_df['date_str'] = item_df['date'].dt.strftime('%Y-%m-%d')
                     fig_line = px.line(
-                        item_df, 
-                        x='date', 
-                        y='unit_price', 
-                        markers=True, 
-                        title=f"การเปลี่ยนแปลงราคา: {selected_item} (ข้อมูลสูงสุด 180 วัน)"
+                        item_df, x='date_str', y='unit_price', markers=True, 
+                        title=f"การเปลี่ยนแปลงราคา: {selected_item} (ข้อมูล 180 วัน)"
                     )
-                    
-                    # ตั้งค่ามุมมองเริ่มต้นที่ 30 วันย้อนหลัง และเพิ่มปุ่มเลื่อน/ซูม
-                    start_view = max(item_df['date'].min(), days_30_ago)
                     
                     fig_line.update_xaxes(
-                        range=[start_view, today],
-                        rangeslider_visible=True, # เปิดแถบเลื่อน (Slider)
-                        rangeselector=dict(       # เพิ่มปุ่มกดเลือกช่วงเวลา
-                            buttons=list([
-                                dict(count=30, label="30 วัน", step="day", stepmode="backward"),
-                                dict(count=90, label="3 เดือน", step="day", stepmode="backward"),
-                                dict(count=180, label="6 เดือน", step="day", stepmode="backward"),
-                                dict(step="all", label="ทั้งหมด")
-                            ])
-                        )
+                        type='category', categoryorder='array', categoryarray=item_df['date_str']
                     )
-                    
-                    # เริ่มแกน Y ที่ 0 เพื่อให้เห็นความต่างชัดเจน
                     fig_line.update_layout(yaxis_range=[0, item_df['unit_price'].max() * 1.2]) 
                     st.plotly_chart(fig_line, use_container_width=True)
                 else:
@@ -322,7 +330,7 @@ elif page == "📋 ข้อมูลทั้งหมด":
     st.header("📋 ข้อมูลทั้งหมด")
     df = load_data()
     if not df.empty:
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df.sort_index(ascending=False), use_container_width=True)
     else:
         st.info("ยังไม่มีข้อมูล")
 
