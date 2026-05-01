@@ -151,8 +151,8 @@ if page == "📊 Dashboard":
         # แยกข้อมูลตามประเภท
         tab_ov, tab_daily, tab_monthly = st.tabs(["🏠 ภาพรวมร้าน", "📅 สรุปรายวัน", "📈 วิเคราะห์รายเดือน"])
         
-        with tab_ov:
-            # สรุปตัวเลขสำคัญ
+       with tab_ov:
+            # ... (ส่วน Metric คล้ายเดิม) ...
             t_inc = df[df['type'].isin(['Income', 'Monthly'])]['total_price'].sum()
             t_exp = df[df['type'] == 'Expense']['total_price'].sum()
             
@@ -161,9 +161,17 @@ if page == "📊 Dashboard":
             c2.metric("รายจ่ายวัตถุดิบ", f"฿{t_exp:,.2f}")
             c3.metric("กำไรเบื้องต้น", f"฿{t_inc - t_exp:,.2f}", delta=f"{((t_inc-t_exp)/t_inc*100 if t_inc > 0 else 0):.1f}%")
             
-            # กราฟเปรียบเทียบรายรับ-รายจ่าย
-            fig_ov = px.pie(values=[t_inc, t_exp], names=['รายรับ', 'รายจ่าย'], hole=0.4, title="สัดส่วนรายรับ-รายจ่าย")
-            st.plotly_chart(fig_inc, use_container_width=True)
+            st.divider()
+            
+            # --- จุดที่ต้องแก้ไขคือตรงนี้ครับ ---
+            # เปลี่ยนจาก fig_ov เป็น fig_ov (หรือชื่ออะไรก็ได้ที่ตรงกันทั้งสองบรรทัด)
+            fig_ov = px.pie(values=[t_inc, t_exp], 
+                            names=['รายรับรวม', 'รายจ่ายวัตถุดิบ'], 
+                            hole=0.4, 
+                            title="สัดส่วนรายรับ vs รายจ่าย")
+            
+            # ตรงนี้ต้องใช้ชื่อเดียวกับด้านบน คือ fig_ov
+            st.plotly_chart(fig_ov, use_container_width=True)
 
         with tab_daily:
             daily_inc = df[df['type'] == 'Income'].copy()
