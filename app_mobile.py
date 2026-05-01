@@ -24,7 +24,7 @@ conn = get_conn()
 try:
     client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 except Exception as e:
-    st.error(f"⚠️ ไม่พบ API Key: {e}")
+    st.error(f"⚠️ ไม่พบ API Key ใน Secrets: {e}")
 
 # --- 2.1 ระบบ Cache ข้อมูล ---
 @st.cache_data(ttl=60)
@@ -40,7 +40,12 @@ def refresh_data_cache():
     load_data.clear()
 
 def call_gemini_with_fallback(prompt, contents=None, is_complex_content=False):
-    model_list = ["models/gemini-2.0-flash", "models/gemini-2.0-flash-lite"]
+    # ปรับปรุง: ใช้ 3.1 Flash Lite ตามที่คุณต้องการเป็นหลัก
+    model_list = [
+        "models/gemini-3.1-flash-lite-preview",
+        "models/gemini-2.0-flash", 
+        "models/gemini-1.5-flash"
+    ]
     for model_name in model_list:
         try:
             if is_complex_content:
@@ -48,11 +53,20 @@ def call_gemini_with_fallback(prompt, contents=None, is_complex_content=False):
             else:
                 input_parts = [prompt] + contents if contents else [prompt]
                 response = client.models.generate_content(model=model_name, contents=input_parts)
-            return response.text
-        except: continue
+            
+            if response.text:
+                st.toast(f"✅ ใช้โมเดล: {model_name}", icon="🤖")
+                return response.text
+        except Exception as e:
+            # แจ้งเตือนสั้นๆ เมื่อโมเดลนั้นใช้ไม่ได้
+            st.toast(f"⚠️ {model_name} ล้มเหลว: {str(e)[:50]}...", icon="❗")
+            continue
+    
+    st.error("❌ AI ทุกรุ่นไม่ตอบสนอง กรุณาเช็ค API Key หรือสถานะการเชื่อมต่อ")
     return None
 
 def safe_parse_json(text_response: str):
+    if not text_response: return []
     try:
         content = text_response
         if "```" in text_response:
@@ -60,13 +74,14 @@ def safe_parse_json(text_response: str):
             content = parts[1] if len(parts) >= 2 else parts[0]
             if content.lstrip().startswith("json"): content = content.lstrip()[4:]
         return json.loads(content.strip())
-    except: return []
+    except:
+        st.warning("⚠️ AI ส่งข้อมูลมาผิดรูปแบบ JSON")
+        return []
 
 # --- 3. ฟังก์ชัน AI Engine ---
 
 def process_stock_ai(data_input, is_bytes=False, mime_type=None):
-    prompt = """สกัดข้อมูลสินค้าเป็น JSON array: [{"date": "YYYY-MM-DD", "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม}] 
-    ตอบเฉพาะ PURE JSON เสมอ"""
+    prompt = """สกัดข้อมูลสินค้าเป็น JSON array: [{"date": "YYYY-MM-DD", "name": "ชื่อสินค้า", "qty": จำนวน, "unit": "หน่วย", "total_price": ราคารวม}] ตอบเฉพาะ PURE JSON"""
     if is_bytes:
         contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt), types.Part.from_bytes(data=data_input, mime_type=mime_type)])]
         res_text = call_gemini_with_fallback(prompt, contents=contents, is_complex_content=True)
@@ -112,7 +127,7 @@ def save_data_to_sheets(df_to_save: pd.DataFrame, data_type="Expense"):
 
 # --- 5. UI Layout ---
 
-st.sidebar.title("🍱 Nave 304 Menu")
+st.sidebar.title("🍱 Nave 304 Master")
 page = st.sidebar.radio("เลือกเมนู:", ["📊 Dashboard", "💰 รายรับเดลิเวอรี่", "💸 บันทึกรายจ่าย", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด"])
 
 # --- 📊 Dashboard ---
@@ -150,36 +165,37 @@ elif page == "💰 รายรับเดลิเวอรี่":
     res = None
     if mode == "📝 วางข้อความ":
         txt = st.text_area("วางข้อความรายงานที่นี่:")
-        if txt and st.button("🪄 วิเคราะห์"):
-            with st.spinner("AI กำลังทำงาน..."): res = process_income_ai(txt, is_monthly=(rtype=="สรุปรายเดือน (Monthly)"))
+        if txt and st.button("🪄 วิเคราะห์ด้วย AI"):
+            with st.spinner("AI กำลังวิเคราะห์..."): res = process_income_ai(txt, is_monthly=(rtype=="สรุปรายเดือน (Monthly)"))
     else:
-        file = st.file_uploader("เลือกไฟล์รายงาน", type=['pdf', 'jpg', 'png', 'jpeg'])
-        if file and st.button("🪄 วิเคราะห์ไฟล์"):
+        file = st.file_uploader("เลือกไฟล์รายงาน (PDF/รูป)", type=['pdf', 'jpg', 'png', 'jpeg'])
+        if file and st.button("🪄 วิเคราะห์จากไฟล์"):
             with st.spinner("AI กำลังอ่านไฟล์..."): res = process_income_ai(file.read(), is_monthly=(rtype=="สรุปรายเดือน (Monthly)"), is_bytes=True, mime_type=file.type)
     if res:
         st.session_state.temp_inc = pd.DataFrame(res)
         st.session_state.temp_type = "Monthly" if rtype == "สรุปรายเดือน (Monthly)" else "Income"
     if 'temp_inc' in st.session_state:
-        edited = st.data_editor(st.session_state.temp_inc)
-        if st.button("💾 ยืนยันบันทึก"):
+        edited = st.data_editor(st.session_state.temp_inc, use_container_width=True)
+        if st.button("💾 บันทึกลงระบบ"):
             if save_data_to_sheets(edited, st.session_state.temp_type):
                 del st.session_state.temp_inc
                 st.rerun()
 
-# --- 💸 บันทึกรายจ่าย (รวม แสกน + เสียง) ---
+# --- 💸 บันทึกรายจ่าย ---
 elif page == "💸 บันทึกรายจ่าย":
     st.header("💸 บันทึกรายจ่ายวัตถุดิบ")
     ex_method = st.radio("เลือกวิธีบันทึก:", ["ยังไม่เลือก", "📸 แสกนบิล/อัปโหลดรูป", "🎙️ บันทึกด้วยเสียง"], horizontal=True)
     
     res = None
     if ex_method == "📸 แสกนบิล/อัปโหลดรูป":
-        sub_mode = st.radio("รูปแบบ:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์จากเครื่อง"], horizontal=True)
-        img_file = st.camera_input("สแกนบิล") if sub_mode == "📷 ถ่ายรูปสด" else st.file_uploader("เลือกรูปบิล", type=['jpg','png','jpeg'])
+        sub_mode = st.radio("รูปแบบ:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
+        # กล้องจะไม่เปิดจนกว่าจะเลือก 'ถ่ายรูปสด'
+        img_file = st.camera_input("แสกนบิล") if sub_mode == "📷 ถ่ายรูปสด" else st.file_uploader("เลือกรูปบิล", type=['jpg','png','jpeg'])
         if img_file and st.button("🪄 วิเคราะห์บิล"):
             with st.spinner("AI กำลังอ่านบิล..."): res = process_stock_ai(Image.open(img_file))
             
     elif ex_method == "🎙️ บันทึกด้วยเสียง":
-        audio = st.audio_input("พูดรายการสินค้า (เช่น: ไก่สด 5 กิโล 500 บาท)")
+        audio = st.audio_input("พูดรายการสินค้าและราคา")
         if audio and st.button("🚀 แปลงเสียงเป็นข้อมูล"):
             with st.spinner("AI กำลังฟังเสียง..."): res = process_stock_ai(audio.read(), is_bytes=True, mime_type=audio.type)
 
@@ -189,7 +205,7 @@ elif page == "💸 บันทึกรายจ่าย":
     if 'temp_ex' in st.session_state:
         st.subheader("📝 ตรวจสอบรายการ")
         edited = st.data_editor(st.session_state.temp_ex, use_container_width=True)
-        if st.button("💾 บันทึกลงฐานข้อมูล"):
+        if st.button("💾 บันทึกรายจ่าย"):
             if save_data_to_sheets(edited, "Expense"):
                 del st.session_state.temp_ex
                 st.rerun()
@@ -203,11 +219,11 @@ elif page == "🤖 AI Agent":
         with st.chat_message("assistant"):
             df_ctx = load_data().tail(50).to_csv()
             ans = call_gemini_with_fallback(f"ข้อมูลร้านอาหาร:\n{df_ctx}\nคำถาม: {query}")
-            st.markdown(ans)
+            st.markdown(ans if ans else "ขออภัยครับ ระบบไม่ตอบสนอง")
 
 # --- 📋 ข้อมูลทั้งหมด ---
 elif page == "📋 ข้อมูลทั้งหมด":
-    st.header("📋 ฐานข้อมูลทั้งหมด")
+    st.header("📋 ข้อมูลทั้งหมด")
     st.dataframe(load_data(), use_container_width=True)
 
 if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
