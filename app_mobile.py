@@ -95,12 +95,30 @@ def process_extraction(data, p_type, is_bytes=False, mime=None):
 def save_to_tab(df, tab):
     if conn is None or df.empty: return False
     try:
+        # --- ส่วนที่แก้ไข: เติมข้อมูลที่ขาดให้ครบก่อนบันทึก ---
+        if tab == "Income":
+            df['type'] = 'Income'
+            # ตรวจสอบชื่อแอป ถ้า AI ลืมใส่ให้ใส่ 'หน้าร้าน' เป็นค่าเริ่มต้น
+            if 'app' not in df.columns: df['app'] = 'หน้าร้าน'
+            # เปลี่ยนชื่อคอลัมน์ให้ตรงกับที่ Dashboard เรียกใช้
+            if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
+        
+        elif tab == "Expense":
+            df['type'] = 'Expense'
+            # ถ้า AI ส่งมาแค่ราคารวม ให้ตั้งชื่อสินค้าว่า 'ไม่ได้ระบุ' กัน Error
+            if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
+
+        # โหลดข้อมูลเดิมมาต่อท้าย
         existing = load_data(tab)
         final = pd.concat([existing, df], ignore_index=True)
+        
+        # อัปเดตข้อมูลกลับไปยังแท็บที่ระบุ
         conn.update(worksheet=tab, data=final)
         refresh_all_caches()
         return True
-    except: return False
+    except Exception as e:
+        st.error(f"❌ บันทึกล้มเหลว: {e}")
+        return False
 
 # --- 4. UI Layout ---
 st.sidebar.title("🚀 Nave 304 Master")
