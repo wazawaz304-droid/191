@@ -70,16 +70,21 @@ def call_gemini_3_1(prompt, contents=None, is_complex_content=False):
     except: return None
 
 def process_extraction(data, p_type, is_bytes=False, mime=None):
+    # 1. กำหนดวันที่ปัจจุบันของไทย
+    now_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # 2. ปรับ Prompt ให้ระบุวันที่ปัจจุบันเข้าไปด้วย
     if p_type == "Expense":
-        p = "สกัดสินค้าเป็น JSON: [{'date': 'YYYY-MM-DD', 'name': 'สินค้า', 'qty': 1, 'unit': 'หน่วย', 'total_price': 0}]"
+        p = f"สกัดสินค้าเป็น JSON: [{{'date': '{now_str}', 'name': 'สินค้า', 'qty': 1, 'unit': 'หน่วย', 'total_price': 0}}]. หากบิลไม่ระบุวันที่ให้ใช้ {now_str}"
     elif p_type == "หน้าร้าน":
-        p = "สกัดยอดหน้าร้านเป็น JSON: [{'date': 'YYYY-MM-DD', 'app': 'หน้าร้าน', 'net_income': ยอดขาย}]"
+        p = f"สกัดยอดหน้าร้านจากข้อความหรือเสียง: [{{'date': '{now_str}', 'app': 'หน้าร้าน', 'net_income': ยอดขาย}}]. วันนี้คือวันที่ {now_str} ให้ใช้วันที่นี้เป็นค่าเริ่มต้น"
     elif p_type == "สรุปรายเดือน":
         p = "สกัดรายงานรายเดือนเป็น JSON: [{'month_year': 'YYYY-MM', 'platform': 'แอป', 'gross': 0, 'fees': 0, 'ads': 0, 'discounts': 0, 'net_income': 0}]"
     else:
-        p = "สกัดรายได้เดลิเวอรี่เป็น JSON: [{'date': 'YYYY-MM-DD', 'app': 'ชื่อแอป', 'net_income': ยอดโอน}]"
+        p = f"สกัดรายได้เป็น JSON: [{{'date': '{now_str}', 'app': 'ชื่อแอป', 'net_income': ยอดโอน}}]. วันนี้คือวันที่ {now_str}"
     
     prompt = p + " ตอบเฉพาะ PURE JSON เท่านั้น"
+    
     if is_bytes:
         contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt), types.Part.from_bytes(data=data, mime_type=mime)])]
         res = call_gemini_3_1(prompt, contents=contents, is_complex_content=True)
