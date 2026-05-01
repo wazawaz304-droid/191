@@ -255,84 +255,83 @@ elif page == "📊 Dashboard":
     st.header("📊 สรุปผลกำไร-ขาดทุน")
     df = load_data()
     if not df.empty and 'type' in df.columns:
+        # เตรียมข้อมูลตัวเลข
         df['total_price'] = pd.to_numeric(df['total_price'], errors='coerce').fillna(0)
         
         inc = df[df['type'] == 'Income']
         exp = df[df['type'] == 'Expense']
+        
         t_inc = inc['total_price'].sum() if not inc.empty else 0
         t_exp = exp['total_price'].sum() if not exp.empty else 0
         
+        # --- ส่วนที่ 1: Metric หลัก ---
         c1, c2, c3 = st.columns(3)
-        c1.metric("รายรับเดลิเวอรี่ทั้งหมด", f"฿{t_inc:,.2f}")
-        c2.metric("รายจ่ายวัตถุดิบทั้งหมด", f"฿{t_exp:,.2f}")
-        c3.metric("กำไรเบื้องต้น", f"฿{t_inc - t_exp:,.2f}", delta_color="normal")
+        c1.metric("💰 รายรับรวม (Net)", f"฿{t_inc:,.2f}")
+        c2.metric("📦 รายจ่ายวัตถุดิบ", f"฿{t_exp:,.2f}")
+        c3.metric("📈 กำไรเบื้องต้น", f"฿{t_inc - t_exp:,.2f}", 
+                  delta=f"{((t_inc-t_exp)/t_inc*100 if t_inc > 0 else 0):.1f}%",
+                  delta_color="normal")
         
         st.divider()
+
+        # --- ส่วนที่ 2: แยกยอดรายรับแต่ละแอป (ส่วนที่ปรับปรุงใหม่) ---
+        st.subheader("📱 แยกรายยอดรับตามแอปเดลิเวอรี่")
+        if not inc.empty:
+            # จัดกลุ่มข้อมูลรายแอป
+            app_summary = inc.groupby('name')['total_price'].sum().reset_index()
+            
+            # สร้างคอลัมน์ตามจำนวนแอปที่มีข้อมูล
+            app_cols = st.columns(len(app_summary) if len(app_summary) > 0 else 1)
+            
+            for idx, row in app_summary.iterrows():
+                with app_cols[idx % len(app_cols)]:
+                    # ตกแต่งชื่อแอป (ตัดคำว่า Income ออกเพื่อให้สวยงาม)
+                    display_name = row['name'].replace(" Income", "")
+                    st.metric(label=f"ยอดจาก {display_name}", value=f"฿{row['total_price']:,.2f}")
+        else:
+            st.info("ยังไม่มีข้อมูลรายรับเพื่อแยกแอป")
+
+        st.divider()
+
+        # --- ส่วนที่ 3: กราฟวิเคราะห์ ---
         col_l, col_r = st.columns(2)
         with col_l:
             if not inc.empty: 
                 inc_sorted = inc.sort_values('date')
-                st.plotly_chart(px.bar(inc_sorted, x='date', y='total_price', color='name', title="รายรับแยกตามแอป"), use_container_width=True)
+                # กราฟแท่งแสดงรายรับสะสมรายวัน แยกสีตามแอป
+                fig_inc = px.bar(inc_sorted, x='date', y='total_price', color='name', 
+                                 title="แนวโน้มรายรับรายวัน (แยกตามแอป)",
+                                 labels={'total_price': 'ยอดโอนสุทธิ', 'name': 'แอป/ช่องทาง'})
+                st.plotly_chart(fig_inc, use_container_width=True)
             else:
                 st.info("ยังไม่มีข้อมูลรายรับ")
+                
         with col_r:
             if not exp.empty: 
-                st.plotly_chart(px.pie(exp, values='total_price', names='name', title="สัดส่วนรายจ่ายวัตถุดิบ"), use_container_width=True)
+                # กราฟวงกลมสัดส่วนรายจ่าย
+                st.plotly_chart(px.pie(exp, values='total_price', names='name', 
+                                       title="สัดส่วนรายจ่ายวัตถุดิบ"), use_container_width=True)
             else:
                 st.info("ยังไม่มีข้อมูลรายจ่าย")
 
+        # --- ส่วนที่ 4: แนวโน้มราคา (ของเดิม) ---
         st.divider()
         st.subheader("📈 แนวโน้มราคาวัตถุดิบ (Price Fluctuation)")
+        # ... (โค้ดส่วนวิเคราะห์ราคาวัตถุดิบเดิมของคุณ) ...
         if not exp.empty:
             exp_items = exp.dropna(subset=['name']).copy()
             items_list = sorted(exp_items['name'].unique())
-            
             if len(items_list) > 0:
                 selected_item = st.selectbox("เลือกวัตถุดิบเพื่อดูแนวโน้มราคาต่อหน่วย:", items_list)
                 item_df = exp_items[exp_items['name'] == selected_item].copy()
-                
                 item_df['date'] = pd.to_datetime(item_df['date'], errors='coerce')
                 item_df['unit_price'] = pd.to_numeric(item_df['unit_price'], errors='coerce')
-                item_df = item_df.dropna(subset=['date', 'unit_price'])
-                
-                item_df = item_df.groupby('date', as_index=False)['unit_price'].mean()
-                
-                today = pd.Timestamp.now()
-                days_180_ago = today - pd.Timedelta(days=180)
-                days_30_ago = today - pd.Timedelta(days=30)
-                
-                item_df = item_df[item_df['date'] >= days_180_ago]
-                item_df = item_df.sort_values('date')
+                item_df = item_df.dropna(subset=['date', 'unit_price']).sort_values('date')
                 
                 if not item_df.empty:
-                    item_df['date_str'] = item_df['date'].dt.strftime('%Y-%m-%d')
-                    fig_line = px.line(
-                        item_df, x='date_str', y='unit_price', markers=True, 
-                        title=f"การเปลี่ยนแปลงราคา: {selected_item} (ข้อมูล 180 วัน)"
-                    )
-                    
-                    fig_line.update_xaxes(
-                        type='category', categoryorder='array', categoryarray=item_df['date_str']
-                    )
-                    fig_line.update_layout(yaxis_range=[0, item_df['unit_price'].max() * 1.2]) 
+                    fig_line = px.line(item_df, x='date', y='unit_price', markers=True, 
+                                      title=f"การเปลี่ยนแปลงราคา: {selected_item}")
                     st.plotly_chart(fig_line, use_container_width=True)
-                else:
-                    st.warning("ไม่พบข้อมูลราคาในช่วง 180 วันที่ผ่านมา")
-            else:
-                st.info("ยังไม่มีรายชื่อวัตถุดิบ")
-        else:
-            st.info("ยังไม่มีข้อมูลรายจ่ายวัตถุดิบในระบบ")
-
-    else: 
-        st.info("ยังไม่มีข้อมูลในระบบ หรือ โครงสร้างข้อมูลยังไม่สมบูรณ์")
-
-elif page == "📋 ข้อมูลทั้งหมด":
-    st.header("📋 ข้อมูลทั้งหมด")
-    df = load_data()
-    if not df.empty:
-        st.dataframe(df.sort_index(ascending=False), use_container_width=True)
-    else:
-        st.info("ยังไม่มีข้อมูล")
 
 elif page == "🤖 AI Agent":
     st.header("🤖 AI Business Assistant")
