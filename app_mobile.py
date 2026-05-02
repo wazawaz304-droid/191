@@ -333,38 +333,37 @@ def render_food_cost_meter(pct):
 # ============================================================
 # 4. SIDEBAR NAVIGATION
 # ============================================================
-with st.sidebar:
-    st.markdown("### 🍜 Nave 304")
-    st.markdown("<small style='opacity:0.7'>AI Business Master</small>", unsafe_allow_html=True)
-    st.divider()
+st.sidebar.markdown("### 🍜 Nave 304")
+st.sidebar.markdown("<small style='opacity:0.7'>AI Business Master</small>", unsafe_allow_html=True)
+st.sidebar.divider()
 
-    page = st.radio(
-        "เมนู",
-        [
-            "📊 Dashboard รายวัน",
-            "📈 วิเคราะห์รายเดือน",
-            "💰 บันทึกรายรับ",
-            "💸 บันทึกรายจ่าย",
-            "👷 ค่าแรงพนักงาน",
-            "🤖 AI Agent",
-            "📋 ข้อมูลทั้งหมด",
-        ],
-        label_visibility="collapsed",
-    )
+page = st.sidebar.radio(
+    "เมนู",
+    [
+        "📊 Dashboard รายวัน",
+        "📈 วิเคราะห์รายเดือน",
+        "💰 บันทึกรายรับ",
+        "💸 บันทึกรายจ่าย",
+        "👷 ค่าแรงพนักงาน",
+        "🤖 AI Agent",
+        "📋 ข้อมูลทั้งหมด",
+    ],
+    label_visibility="collapsed",
+)
 
-    st.divider()
+st.sidebar.divider()
 
-    # ── ตัวตั้งค่าต้นทุนคงที่ (สำหรับ Break-even) ──
-    with st.expander("⚙️ ตั้งค่าต้นทุนคงที่/วัน"):
-        rent_day    = st.number_input("ค่าเช่า/วัน (฿)", value=667, step=50)
-        utility_day = st.number_input("ค่าน้ำ+ไฟ/วัน (฿)", value=200, step=50)
-        pkg_pct     = st.number_input("แพ็คเกจจิ้ง (% ของรายรับ)", value=2.0, step=0.5, format="%.1f")
-        target_fc   = st.number_input("เป้า Food Cost สูงสุด (%)", value=35.0, step=1.0, format="%.1f")
+# ── ตัวตั้งค่าต้นทุนคงที่ — define ที่นี่เสมอ ไม่ว่าจะอยู่หน้าไหน ──
+with st.sidebar.expander("⚙️ ตั้งค่าต้นทุนคงที่/วัน"):
+    rent_day    = st.number_input("ค่าเช่า/วัน (฿)",              value=667,  step=50,  key="rent_day")
+    utility_day = st.number_input("ค่าน้ำ+ไฟ/วัน (฿)",           value=200,  step=50,  key="utility_day")
+    pkg_pct     = st.number_input("แพ็คเกจจิ้ง (% ของรายรับ)",   value=2.0,  step=0.5, format="%.1f", key="pkg_pct")
+    target_fc   = st.number_input("เป้า Food Cost สูงสุด (%)",   value=35.0, step=1.0, format="%.1f", key="target_fc")
 
-    st.divider()
-    if st.button("🔄 รีเฟรชข้อมูล"):
-        refresh_all_caches()
-        st.rerun()
+st.sidebar.divider()
+if st.sidebar.button("🔄 รีเฟรชข้อมูล"):
+    refresh_all_caches()
+    st.rerun()
 
 
 # ============================================================
