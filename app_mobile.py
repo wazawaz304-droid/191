@@ -652,38 +652,112 @@ elif page == "💰 บันทึกรายรับ":
 
     st.markdown("<div class='page-title'>💰 บันทึกรายรับ</div>", unsafe_allow_html=True)
 
-    rtype = st.radio("ประเภท:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"],
-                     horizontal=True)
-    method = st.radio("วิธีบันทึก:", ["⌨️ พิมพ์/วางข้อความ", "🎙️ บันทึกเสียง", "📁 อัปโหลดไฟล์"],
-                      horizontal=True)
+    rtype = st.radio(
+        "ประเภทรายรับ:",
+        ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"],
+        horizontal=True,
+    )
+    method = st.radio(
+        "วิธีบันทึก:",
+        ["⌨️ พิมพ์/วางข้อความ", "🎙️ บันทึกเสียง", "📷 ถ่ายรูป/สแกนหน้าจอ", "📁 อัปโหลดไฟล์"],
+        horizontal=True,
+    )
     res = None
+    raw_text = None  # เก็บ raw output จาก AI
 
     if method == "⌨️ พิมพ์/วางข้อความ":
-        txt = st.text_area("ระบุข้อมูล (วางข้อความจากแอป หรือพิมพ์รายละเอียด):", height=150)
+        txt = st.text_area(
+            "วางข้อความจากแอปเดลิเวอรี่ หรือพิมพ์รายละเอียด:",
+            height=150,
+            placeholder="เช่น: Grab ยอดโอน 1,250 บาท วันที่ 1 พฤษภาคม...",
+        )
         if txt and st.button("🪄 วิเคราะห์ด้วย AI", type="primary"):
             with st.spinner("AI กำลังวิเคราะห์..."):
+                raw_text = call_gemini(
+                    f"สกัดข้อมูลรายรับจากข้อความนี้เป็น JSON ตอบ PURE JSON เท่านั้น:\n{txt}"
+                )
                 res = process_extraction(txt, rtype)
 
     elif method == "🎙️ บันทึกเสียง":
-        audio = st.audio_input("กดพูดรายการรายรับ...")
-        if audio and st.button("🚀 แปลงเสียงเป็นข้อมูล", type="primary"):
-            with st.spinner("AI กำลังแปลงเสียง..."):
-                res = process_extraction(audio.read(), rtype, is_bytes=True, mime=audio.type)
+        st.markdown(
+            "<div class='nave-alert-info'>กดปุ่มไมค์ค้างไว้แล้วพูด เช่น <b>Grab วันนี้ 1,500 บาท 45 ออเดอร์</b></div>",
+            unsafe_allow_html=True,
+        )
+        audio = st.audio_input("🎙️ กดเพื่อบันทึกเสียง")
+        if audio:
+            st.audio(audio)
+            if st.button("🚀 แปลงเสียงเป็นข้อมูล", type="primary"):
+                with st.spinner("AI กำลังแปลงเสียง..."):
+                    audio_bytes = audio.read()
+                    raw_text = call_gemini(
+                        "สกัดข้อมูลรายรับจากเสียงนี้เป็น JSON ตอบ PURE JSON เท่านั้น",
+                        contents=[types.Content(role="user", parts=[
+                            types.Part.from_text(text="สกัดข้อมูลรายรับจากเสียงนี้เป็น JSON"),
+                            types.Part.from_bytes(data=audio_bytes, mime_type=audio.type),
+                        ])],
+                        is_complex_content=True,
+                    )
+                    res = process_extraction(audio_bytes, rtype, is_bytes=True, mime=audio.type)
 
-    else:
-        file = st.file_uploader("เลือกไฟล์รายงาน", type=["pdf", "jpg", "png", "jpeg"])
-        if file and st.button("🪄 วิเคราะห์ไฟล์", type="primary"):
-            with st.spinner("AI กำลังอ่านไฟล์..."):
-                res = process_extraction(file.read(), rtype, is_bytes=True, mime=file.type)
+    elif method == "📷 ถ่ายรูป/สแกนหน้าจอ":
+        sub = st.radio("ช่องทาง:", ["📷 ถ่ายรูปสด (มือถือ)", "🖼️ อัปโหลดรูปภาพ"], horizontal=True)
+        if sub == "📷 ถ่ายรูปสด (มือถือ)":
+            img_file = st.camera_input("📷 ถ่ายรูปสรุปยอดหรือหน้าจอแอป")
+        else:
+            img_file = st.file_uploader(
+                "อัปโหลดรูปภาพ (screenshot จากแอป, ใบสรุป)",
+                type=["jpg", "jpeg", "png", "webp"],
+            )
+
+        if img_file:
+            st.image(img_file, caption="รูปที่เลือก", use_container_width=True)
+            if st.button("🪄 ให้ AI สกัดข้อมูลจากรูป", type="primary"):
+                with st.spinner("AI กำลังอ่านรูป..."):
+                    img_bytes = img_file.read() if sub == "🖼️ อัปโหลดรูปภาพ" else img_file.getvalue()
+                    mime_type  = "image/jpeg"
+                    contents = [types.Content(role="user", parts=[
+                        types.Part.from_text(text=f"สกัดข้อมูลรายรับจากรูปภาพนี้เป็น JSON ประเภท: {rtype} ตอบ PURE JSON เท่านั้น"),
+                        types.Part.from_bytes(data=img_bytes, mime_type=mime_type),
+                    ])]
+                    raw_text = call_gemini("", contents=contents, is_complex_content=True)
+                    res = safe_parse_json(raw_text) if raw_text else []
+                    if not res:
+                        res = process_extraction(img_bytes, rtype, is_bytes=True, mime=mime_type)
+
+    else:  # อัปโหลดไฟล์ PDF
+        file = st.file_uploader(
+            "เลือกไฟล์รายงาน (PDF, รูปภาพ)",
+            type=["pdf", "jpg", "png", "jpeg"],
+        )
+        if file:
+            if st.button("🪄 วิเคราะห์ไฟล์", type="primary"):
+                with st.spinner("AI กำลังอ่านไฟล์..."):
+                    file_bytes = file.read()
+                    contents = [types.Content(role="user", parts=[
+                        types.Part.from_text(text=f"สกัดข้อมูลรายรับจากไฟล์นี้เป็น JSON ประเภท: {rtype} ตอบ PURE JSON เท่านั้น"),
+                        types.Part.from_bytes(data=file_bytes, mime_type=file.type),
+                    ])]
+                    raw_text = call_gemini("", contents=contents, is_complex_content=True)
+                    res = safe_parse_json(raw_text) if raw_text else []
+                    if not res:
+                        res = process_extraction(file_bytes, rtype, is_bytes=True, mime=file.type)
+
+    # ── แสดง Raw Output จาก AI ──
+    if raw_text:
+        with st.expander("🔍 ดูข้อมูลดิบจาก AI (Raw Output)", expanded=False):
+            st.code(raw_text, language="json")
 
     if res:
         st.session_state.tmp_inc = pd.DataFrame(res)
-        st.success(f"✅ AI พบข้อมูล {len(res)} รายการ")
+        st.success(f"✅ AI สกัดได้ {len(res)} รายการ — ตรวจสอบและแก้ไขด้านล่างได้เลย")
 
-    if "tmp_inc" in st.session_state:
+    if "tmp_inc" in st.session_state and not st.session_state.tmp_inc.empty:
         st.markdown("<div class='section-header'>✏️ ตรวจสอบและแก้ไขก่อนบันทึก</div>", unsafe_allow_html=True)
-        edited = st.data_editor(st.session_state.tmp_inc, use_container_width=True,
-                                num_rows="dynamic")
+        edited = st.data_editor(
+            st.session_state.tmp_inc,
+            use_container_width=True,
+            num_rows="dynamic",
+        )
         col_save, col_clear = st.columns([1, 4])
         with col_save:
             if st.button("💾 บันทึกลงฐานข้อมูล", type="primary"):
@@ -706,28 +780,81 @@ elif page == "💸 บันทึกรายจ่าย":
 
     st.markdown("<div class='page-title'>💸 บันทึกรายจ่ายวัตถุดิบ</div>", unsafe_allow_html=True)
 
-    method = st.radio("เลือกวิธี:", ["📸 แสกนบิล/อัปโหลดรูป", "🎙️ บันทึกด้วยเสียง", "⌨️ พิมพ์เอง"],
-                      horizontal=True)
-    res_ex = None
+    method = st.radio(
+        "เลือกวิธี:",
+        ["📸 ถ่ายรูปบิล (กล้อง)", "🖼️ อัปโหลดรูปบิล", "🎙️ บันทึกด้วยเสียง", "⌨️ พิมพ์เอง"],
+        horizontal=True,
+    )
+    res_ex  = None
+    raw_ex  = None
 
-    if method == "📸 แสกนบิล/อัปโหลดรูป":
-        sub = st.radio("ช่องทาง:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
-        img_src = st.camera_input("สแกนบิล") if sub == "📷 ถ่ายรูปสด" \
-                  else st.file_uploader("เลือกรูป", type=["jpg", "png", "jpeg", "webp"])
-        if img_src and st.button("🪄 วิเคราะห์บิล", type="primary"):
-            with st.spinner("AI กำลังอ่านบิล..."):
-                if sub == "📷 ถ่ายรูปสด":
-                    res_ex = process_extraction(img_src.read(), "Expense", is_bytes=True, mime="image/jpeg")
-                else:
-                    res_ex = process_extraction(img_src.read(), "Expense", is_bytes=True, mime=img_src.type)
+    if method == "📸 ถ่ายรูปบิล (กล้อง)":
+        st.markdown(
+            "<div class='nave-alert-info'>ถ่ายรูปใบเสร็จ หรือสแกนบิลวัตถุดิบโดยตรง</div>",
+            unsafe_allow_html=True,
+        )
+        cam_img = st.camera_input("📸 กดเพื่อถ่ายรูปบิล")
+        if cam_img:
+            if st.button("🪄 ให้ AI อ่านบิล", type="primary"):
+                with st.spinner("AI กำลังอ่านบิล..."):
+                    img_bytes = cam_img.getvalue()
+                    contents = [types.Content(role="user", parts=[
+                        types.Part.from_text(
+                            text="สกัดรายการสินค้าจากบิลนี้เป็น JSON: "
+                                 "[{'date': 'YYYY-MM-DD', 'name': 'ชื่อสินค้า', 'qty': จำนวน, 'unit': 'หน่วย', 'total_price': ราคารวม}] "
+                                 "ตอบ PURE JSON เท่านั้น"
+                        ),
+                        types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                    ])]
+                    raw_ex = call_gemini("", contents=contents, is_complex_content=True)
+                    res_ex = safe_parse_json(raw_ex) if raw_ex else []
+
+    elif method == "🖼️ อัปโหลดรูปบิล":
+        up_img = st.file_uploader(
+            "เลือกรูปบิล/ใบเสร็จ",
+            type=["jpg", "jpeg", "png", "webp"],
+        )
+        if up_img:
+            st.image(up_img, caption="รูปที่เลือก", use_container_width=True)
+            if st.button("🪄 ให้ AI อ่านบิล", type="primary"):
+                with st.spinner("AI กำลังอ่านบิล..."):
+                    img_bytes = up_img.read()
+                    contents = [types.Content(role="user", parts=[
+                        types.Part.from_text(
+                            text="สกัดรายการสินค้าจากบิลนี้เป็น JSON: "
+                                 "[{'date': 'YYYY-MM-DD', 'name': 'ชื่อสินค้า', 'qty': จำนวน, 'unit': 'หน่วย', 'total_price': ราคารวม}] "
+                                 "ตอบ PURE JSON เท่านั้น"
+                        ),
+                        types.Part.from_bytes(data=img_bytes, mime_type=up_img.type),
+                    ])]
+                    raw_ex = call_gemini("", contents=contents, is_complex_content=True)
+                    res_ex = safe_parse_json(raw_ex) if raw_ex else []
 
     elif method == "🎙️ บันทึกด้วยเสียง":
-        audio_ex = st.audio_input("พูดรายการรายจ่าย...")
-        if audio_ex and st.button("🚀 แปลงเสียง", type="primary"):
-            with st.spinner("AI กำลังแปลงเสียง..."):
-                res_ex = process_extraction(audio_ex.read(), "Expense", is_bytes=True, mime=audio_ex.type)
+        st.markdown(
+            "<div class='nave-alert-info'>พูดรายการที่ซื้อ เช่น <b>ไก่ 2 กิโล 120 บาท หัวหอม 1 กิโล 30 บาท</b></div>",
+            unsafe_allow_html=True,
+        )
+        audio_ex = st.audio_input("🎙️ กดเพื่อบันทึกเสียง")
+        if audio_ex:
+            st.audio(audio_ex)
+            if st.button("🚀 แปลงเสียงเป็นรายการ", type="primary"):
+                with st.spinner("AI กำลังแปลงเสียง..."):
+                    audio_bytes = audio_ex.read()
+                    contents = [types.Content(role="user", parts=[
+                        types.Part.from_text(
+                            text="สกัดรายการสินค้าจากเสียงนี้เป็น JSON: "
+                                 "[{'date': 'วันนี้', 'name': 'ชื่อสินค้า', 'qty': จำนวน, 'unit': 'หน่วย', 'total_price': ราคารวม}] "
+                                 "ตอบ PURE JSON เท่านั้น"
+                        ),
+                        types.Part.from_bytes(data=audio_bytes, mime_type=audio_ex.type),
+                    ])]
+                    raw_ex = call_gemini("", contents=contents, is_complex_content=True)
+                    res_ex = safe_parse_json(raw_ex) if raw_ex else []
+                    if not res_ex:
+                        res_ex = process_extraction(audio_bytes, "Expense", is_bytes=True, mime=audio_ex.type)
 
-    else:
+    else:  # พิมพ์เอง
         with st.form("manual_expense"):
             col_a, col_b, col_c, col_d = st.columns(4)
             e_date  = col_a.date_input("วันที่", value=datetime.now())
@@ -739,14 +866,22 @@ elif page == "💸 บันทึกรายจ่าย":
                 res_ex = [{"date": str(e_date), "name": e_name, "qty": e_qty,
                            "unit": e_unit, "total_price": e_price}]
 
+    # ── แสดง Raw Output จาก AI ──
+    if raw_ex:
+        with st.expander("🔍 ดูข้อมูลดิบจาก AI (Raw Output)", expanded=False):
+            st.code(raw_ex, language="json")
+
     if res_ex:
         st.session_state.tmp_exp = pd.DataFrame(res_ex)
-        st.success(f"✅ พบ {len(res_ex)} รายการ")
+        st.success(f"✅ AI สกัดได้ {len(res_ex)} รายการ — ตรวจสอบและแก้ไขด้านล่างได้เลย")
 
-    if "tmp_exp" in st.session_state:
+    if "tmp_exp" in st.session_state and not st.session_state.tmp_exp.empty:
         st.markdown("<div class='section-header'>✏️ ตรวจสอบก่อนบันทึก</div>", unsafe_allow_html=True)
-        edited_ex = st.data_editor(st.session_state.tmp_exp, use_container_width=True,
-                                   num_rows="dynamic")
+        edited_ex = st.data_editor(
+            st.session_state.tmp_exp,
+            use_container_width=True,
+            num_rows="dynamic",
+        )
         c1, c2 = st.columns([1, 4])
         with c1:
             if st.button("💾 บันทึก", type="primary"):
