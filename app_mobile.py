@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 # --- 1. การตั้งค่าหน้าจอ ---
-st.set_page_config(page_title="Nave 304 - Smart Business AI", layout="wide", page_icon="🍜")
+st.set_page_config(page_title="Nave 304 - AI Business Master", layout="wide", page_icon="🍜")
 
 # --- 2. การเชื่อมต่อ Google Sheets และ AI ---
 @st.cache_resource
@@ -113,43 +113,37 @@ def save_to_tab(df, tab):
 
 # --- 4. UI Layout ---
 st.sidebar.title("🚀 Nave 304 Master")
-page = st.sidebar.radio("เลือกเมนู:", ["📊 Dashboard", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด"])
+# ปรับปรุงเมนู: แยก Dashboard และ วิเคราะห์รายเดือน
+page = st.sidebar.radio("เลือกเมนู:", ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด"])
 
-# --- 📊 Dashboard (แยกมิติ Daily vs Monthly) ---
-if page == "📊 Dashboard":
-    st.header("📊 บทวิเคราะห์ผลประกอบการ (แยกมิติรายวัน/รายเดือน)")
+# --- 📊 Dashboard รายวัน (เน้น รายรับรายวัน - รายจ่าย) ---
+if page == "📊 Dashboard รายวัน":
+    st.header("📊 แดชบอร์ดรายรับ-รายจ่ายรายวัน")
     df_i = load_data("Income")
     df_e = load_data("Expense")
-    df_m = load_data("Monthly")
     
-    # ล้างข้อมูลตัวเลขทั้งหมด
     df_i['net_income'] = clean_numeric(df_i, 'net_income')
-    df_m['net_income'] = clean_numeric(df_m, 'net_income')
     df_e['total_price'] = clean_numeric(df_e, 'total_price')
     df_i['date'] = pd.to_datetime(df_i['date'], errors='coerce')
     df_e['date'] = pd.to_datetime(df_e['date'], errors='coerce')
 
-    # ส่วน Metric ภาพรวม
-    t_inc_daily = df_i['net_income'].sum()
-    t_inc_monthly = df_m['net_income'].sum()
+    t_inc = df_i['net_income'].sum()
     t_exp = df_e['total_price'].sum()
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("💰 รายรับรายวันสะสม", f"฿{t_inc_daily:,.0f}")
-    c2.metric("📱 รายรับสรุปรายเดือน", f"฿{t_inc_monthly:,.0f}", help="ยอดโอนสุทธิจากแท็บ Monthly")
-    c3.metric("📦 รายจ่ายสต๊อก", f"฿{t_exp:,.0f}")
+    c1.metric("💰 รายรับรายวันรวม", f"฿{t_inc:,.0f}")
+    c2.metric("📦 รายจ่ายสต๊อกรวม", f"฿{t_exp:,.0f}")
+    c3.metric("⚖️ ยอดหักลบ (กำไร)", f"฿{t_inc - t_exp:,.0f}", delta=f"{t_inc - t_exp:,.0f}")
     
     st.divider()
-
-    # แยกแท็บใน Dashboard ชัดเจน
-    tab_daily, tab_monthly, tab_stock = st.tabs(["📅 รายวัน (Daily)", "📊 รายเดือน (Monthly)", "📈 วิเคราะห์สต๊อก"])
     
-    with tab_daily:
-        st.subheader("แนวโน้มรายรับรายวัน")
-        zoom_days = st.radio("ดูย้อนหลัง:", [7, 30, 60, 90], horizontal=True, format_func=lambda x: f"{x} วัน", key="zoom_daily")
+    tab_inc, tab_exp, tab_price = st.tabs(["📅 แนวโน้มรายรับ", "🛒 สรุปรายจ่าย", "📈 ราคาวัตถุดิบ"])
+    
+    with tab_inc:
+        zoom_days = st.radio("ดูย้อนหลัง:", [7, 30, 60, 90], horizontal=True, format_func=lambda x: f"{x} วัน", key="z_daily")
         cutoff = pd.Timestamp.now() - pd.Timedelta(days=zoom_days)
         df_filt = df_i[df_i['date'] >= cutoff].copy()
-
+        
         if not df_filt.empty:
             daily_total = df_filt.groupby('date')['net_income'].sum().reset_index()
             daily_total['rolling'] = daily_total['net_income'].rolling(window=7).mean()
@@ -158,38 +152,66 @@ if page == "📊 Dashboard":
                 d = df_filt[df_filt['app'] == app]
                 fig.add_trace(go.Bar(x=d['date'], y=d['net_income'], name=app))
             fig.add_trace(go.Scatter(x=daily_total['date'], y=daily_total['rolling'], name='แนวโน้ม (7วัน)', line=dict(color='orange', dash='dot')))
-            fig.update_layout(barmode='stack', hovermode="x unified", title=f"ยอดขายรายวันย้อนหลัง {zoom_days} วัน")
+            fig.update_layout(barmode='stack', hovermode="x unified", title=f"ยอดรายวันย้อนหลัง {zoom_days} วัน")
             st.plotly_chart(fig, use_container_width=True)
         else: st.info("ไม่มีข้อมูลรายวันในช่วงนี้")
 
-    with tab_monthly:
-        if not df_m.empty:
-            st.subheader("เปรียบเทียบยอดขาย vs เงินโอนสุทธิ (รายเดือน)")
-            df_m['gross'] = clean_numeric(df_m, 'gross')
-            
+    with tab_exp:
+        if not df_e.empty:
+            st.plotly_chart(px.pie(df_e, values='total_price', names='name', hole=0.4, title="สัดส่วนรายจ่ายสต๊อก"), use_container_width=True)
+
+    with tab_price:
+        if not df_e.empty and 'name' in df_e.columns:
+            target = st.selectbox("เลือกสินค้า:", sorted(df_e['name'].unique()))
+            df_item = df_e[df_e['name'] == target].sort_values('date')
+            df_item['u_price'] = df_item['total_price'] / clean_numeric(df_item, 'qty').replace(0, 1)
+            st.plotly_chart(px.line(df_item, x='date', y='u_price', markers=True, title=f"แนวโน้มราคา {target} ต่อหน่วย"), use_container_width=True)
+
+# --- 📈 วิเคราะห์รายเดือน (ใหม่: แยกสรุปยอดแบบละเอียด) ---
+elif page == "📈 วิเคราะห์รายเดือน":
+    st.header("📈 สรุปยอดและวิเคราะห์รายเดือน (Deep Dive)")
+    df_m = load_data("Monthly")
+    
+    if not df_m.empty:
+        df_m['net_income'] = clean_numeric(df_m, 'net_income')
+        df_m['gross'] = clean_numeric(df_m, 'gross')
+        df_m['fees'] = clean_numeric(df_m, 'fees')
+        df_m['ads'] = clean_numeric(df_m, 'ads')
+        
+        # Metric รายเดือน
+        total_m_net = df_m['net_income'].sum()
+        total_m_gross = df_m['gross'].sum()
+        total_fees = df_m['fees'].sum()
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("💰 ยอดโอนสุทธิรายเดือน", f"฿{total_m_net:,.0f}")
+        m2.metric("📊 ยอดขายรวม (Gross)", f"฿{total_m_gross:,.0f}")
+        m3.metric("📉 ค่า GP/โฆษณารวม", f"฿{total_fees + df_m['ads'].sum():,.0f}")
+        
+        st.divider()
+        
+        col_m1, col_m2 = st.columns([2, 1])
+        with col_m1:
+            st.subheader("เปรียบเทียบยอดขาย vs เงินโอนจริง")
             fig_m = go.Figure()
             fig_m.add_trace(go.Bar(x=df_m['month_year'], y=df_m['gross'], name='ยอดขายรวม (Gross)'))
-            fig_m.add_trace(go.Bar(x=df_m['month_year'], y=df_m['net_income'], name='เงินโอนจริง (Net)'))
-            fig_m.update_layout(barmode='group', title="ยอดขาย Gross vs Net รายเดือน")
+            fig_m.add_trace(go.Bar(x=df_m['month_year'], y=df_m['net_income'], name='เงินโอนสุทธิ (Net)'))
+            fig_m.update_layout(barmode='group')
             st.plotly_chart(fig_m, use_container_width=True)
+            
+        with col_m2:
+            st.subheader("สัดส่วนค่าธรรมเนียมแอป")
+            fig_pie_m = px.pie(df_m, values='fees', names='platform', title="ค่า GP แยกตามแอป")
+            st.plotly_chart(fig_pie_m, use_container_width=True)
+            
+        st.subheader("📋 ตารางสรุปยอดละเอียดรายเดือน")
+        # คำนวณ % ต้นทุนให้เห็นชัดๆ
+        df_m['cost_pct'] = ((df_m['fees'] + df_m['ads']) / df_m['gross'] * 100).round(2)
+        st.dataframe(df_m[['month_year', 'platform', 'gross', 'fees', 'ads', 'net_income', 'cost_pct']].sort_values('month_year', ascending=False), use_container_width=True)
+    else:
+        st.info("ยังไม่มีข้อมูลในแท็บ Monthly กรุณาบันทึกรายงานสรุปรายเดือนก่อนครับ")
 
-            # ตารางวิเคราะห์ค่า GP/Ads
-            st.write("📋 สรุปรายละเอียดรายเดือน")
-            st.dataframe(df_m[['month_year', 'platform', 'gross', 'net_income', 'fees', 'ads']].sort_values('month_year', ascending=False), use_container_width=True)
-        else: st.info("ยังไม่มีข้อมูลในแท็บ Monthly")
-
-    with tab_stock:
-        if not df_e.empty:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.plotly_chart(px.pie(df_e, values='total_price', names='name', hole=0.4, title="สัดส่วนรายจ่าย"), use_container_width=True)
-            with col2:
-                target = st.selectbox("เลือกสินค้าดูราคา:", sorted(df_e['name'].unique()))
-                df_item = df_e[df_e['name'] == target].sort_values('date')
-                df_item['u_price'] = df_item['total_price'] / clean_numeric(df_item, 'qty').replace(0, 1)
-                st.plotly_chart(px.line(df_item, x='date', y='u_price', markers=True, title=f"แนวโน้มราคา {target}"), use_container_width=True)
-
-# --- 💰 บันทึกรายรับ ---
+# --- 💰 บันทึกรายรับ (คงเดิม) ---
 elif page == "💰 บันทึกรายรับ":
     st.header("💰 บันทึกรายรับ")
     rtype = st.radio("ประเภท:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"], horizontal=True)
@@ -197,9 +219,8 @@ elif page == "💰 บันทึกรายรับ":
     res = None
     
     if method == "⌨️ พิมพ์/วางข้อความ":
-        txt = st.text_area("ระบุข้อมูล (เช่น 'วันนี้หน้าร้านได้ 3000' หรือ วางอีเมลเดลิเวอรี่):")
-        if txt and st.button("🪄 วิเคราะห์ด้วย AI"):
-            res = process_extraction(txt, rtype)
+        txt = st.text_area("ระบุข้อมูล:")
+        if txt and st.button("🪄 วิเคราะห์ด้วย AI"): res = process_extraction(txt, rtype)
     elif method == "🎙️ บันทึกเสียง":
         audio = st.audio_input("กดพูดรายการรายรับ...")
         if audio and st.button("🚀 แปลงเสียงเป็นข้อมูล"):
@@ -214,13 +235,12 @@ elif page == "💰 บันทึกรายรับ":
     if 'tmp_inc' in st.session_state:
         edited = st.data_editor(st.session_state.tmp_inc, use_container_width=True)
         if st.button("💾 บันทึกลงฐานข้อมูล"):
-            # ตรวจสอบว่าต้องลงแท็บไหน
             target_tab = "Monthly" if rtype == "สรุปรายเดือน" else "Income"
             if save_to_tab(edited, target_tab):
                 del st.session_state.tmp_inc
                 st.rerun()
 
-# --- 💸 บันทึกรายจ่าย ---
+# --- 💸 บันทึกรายจ่าย (คงเดิม) ---
 elif page == "💸 บันทึกรายจ่าย":
     st.header("💸 บันทึกรายจ่ายวัตถุดิบ")
     method = st.radio("เลือกวิธี:", ["ยังไม่เลือก", "📸 แสกนบิล/อัปโหลดรูป", "🎙️ บันทึกด้วยเสียง"], horizontal=True)
@@ -251,7 +271,7 @@ elif page == "🤖 AI Agent":
     q = st.chat_input("ปรึกษาเรื่องธุรกิจ...")
     if q:
         df_i, df_e, df_m = load_data("Income"), load_data("Expense"), load_data("Monthly")
-        ctx = f"รายรับรายวัน:\n{df_i.tail(5).to_csv()}\nรายรับรายเดือน:\n{df_m.tail(3).to_csv()}"
+        ctx = f"Income Daily: {df_i.tail(5).to_csv()}\nMonthly: {df_m.tail(3).to_csv()}"
         with st.chat_message("assistant"):
             st.write(call_gemini_3_1(f"วิเคราะห์ข้อมูลร้านเนฟ หมี่ไก่ฉีก:\n{ctx}\nคำถาม: {q}"))
 
