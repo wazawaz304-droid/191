@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import difflib # อย่าลืม import ไว้ด้านบนสุดของไฟล์นะครับ
 
 # --- 1. การตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="Nave 304 - AI Business Master", layout="wide", page_icon="🍜")
@@ -69,18 +70,20 @@ def call_gemini_3_1(prompt, contents=None, is_complex_content=False):
             return response.text
     except: return None
 
-def process_extraction(data, p_type, is_bytes=False, mime=None):
+def process_extraction(data, p_type, is_bytes=False, mime=None, existing_names=None):
     now_str = datetime.now().strftime("%Y-%m-%d")
-if p_type == "Expense":
-        # เตรียมรายชื่อสินค้าเดิมเป็นข้อความเพื่อให้ AI อ่าน
-        names_list = ", ".join(existing_names) if existing_names else "ยังไม่มีข้อมูล"
+    
+    if p_type == "Expense":
+        # เตรียมรายชื่อเดิมจากฐานข้อมูล
+        master_list = ", ".join([f"'{n}'" for n in existing_names]) if existing_names else "ไม่มี (ให้ใช้ชื่อตามบิล)"
         
-        p = f"""คุณคือสมุห์บัญชีร้าน 'เนฟ หมี่ไก่ฉีก 304' สกัดข้อมูลรายจ่ายเป็น JSON array 
-        โดยมีกฎการตัดสินใจเรื่องชื่อสินค้า (Mapping Rule) ดังนี้:
-        1. เปรียบเทียบสินค้าที่สกัดได้กับ 'รายชื่อเดิมในระบบ' ต่อไปนี้: [{names_list}]
-        2. หากมีความคล้ายคลึงกัน (เช่น 'อกไก่สด' คล้ายกับ 'ไก่') ให้ใช้ชื่อจาก 'รายชื่อเดิมในระบบ' เท่านั้น
-        3. หากไม่คล้ายกับชื่อใดเลย ให้ใช้ชื่อตามที่สกัดได้จริงจากบิล
-        4. ให้คำนวณ 'unit_price' (ราคาต่อหน่วย) โดยนำ total_price หารด้วย qty
+        p = f"""คุณคือสมุห์บัญชีร้าน 'เนฟ หมี่ไก่ฉีก 304' สกัดข้อมูลรายจ่ายเป็น JSON array
+        
+        กฎการตั้งชื่อ (STRICT RULE):
+        1. ตรวจสอบชื่อสินค้าที่สกัดได้เทียบกับ 'รายชื่อเดิมในระบบ' ต่อไปนี้: [{master_list}]
+        2. 'ต้อง' จับคู่กับรายชื่อเดิมที่มีความหมายใกล้เคียงกันก่อนเสมอ (เช่น 'อกไก่สด', 'เนื้อไก่' ให้ใช้ชื่อว่า 'ไก่')
+        3. หากไม่พบชื่อที่ใกล้เคียงกันเลยจริงๆ จึงจะอนุญาตให้ใช้ชื่อใหม่ตามที่สกัดได้จากบิล
+        4. คำนวณ 'unit_price' (total_price / qty) ให้ด้วย
         
         รูปแบบ JSON: [{{
             'date': '{now_str}', 
@@ -89,8 +92,8 @@ if p_type == "Expense":
             'unit': 'หน่วย', 
             'unit_price': 0, 
             'total_price': 0
-        }}]
-        """
+        }}]"""
+        
     elif p_type == "หน้าร้าน":
         p = f"สกัดยอดหน้าร้านจากข้อความหรือเสียง: [{{'date': '{now_str}', 'app': 'หน้าร้าน', 'net_income': ยอดขาย}}]. วันนี้คือวันที่ {now_str} ให้ใช้วันที่นี้เป็นค่าเริ่มต้น"
     elif p_type == "สรุปรายเดือน":
@@ -113,12 +116,33 @@ def save_to_tab(df, tab):
             df['type'] = 'Income'
             if 'app' not in df.columns: df['app'] = 'หน้าร้าน'
             if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
-        elif tab == "Expense":
+        if tab == "Expense":
             df['type'] = 'Expense'
-            if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
-            # ตรวจสอบว่ามี unit_price หรือไม่ ถ้าไม่มีให้คำนวณซ้ำอีกทีเพื่อความชัวร์
-            if 'unit_price' not in df.columns:
-                df['unit_price'] = clean_numeric(df, 'total_price') / clean_numeric(df, 'qty').replace(0, 1)
+            
+            # --- ดึงรายชื่อเดิมมาเช็กซ้ำเพื่อความแม่นยำ 100% ---
+            existing_data = load_data("Expense")
+            if not existing_data.empty and 'name' in existing_data.columns:
+                master_names = existing_data['name'].unique().tolist()
+                
+                def match_master_name(extracted_name):
+                    # หาชื่อที่ใกล้เคียงที่สุดใน Master List (ความแม่นยำ 60% ขึ้นไป)
+                    matches = difflib.get_close_matches(extracted_name, master_names, n=1, cutoff=0.6)
+                    return matches[0] if matches else extracted_name
+                
+                df['name'] = df['name'].apply(match_master_name)
+            
+            # คำนวณราคาต่อหน่วยซ้ำเพื่อความชัวร์
+            df['unit_price'] = clean_numeric(df, 'total_price') / clean_numeric(df, 'qty').replace(0, 1)
+
+        # บันทึกลง Google Sheets
+        existing = load_data(tab)
+        final = pd.concat([existing, df], ignore_index=True)
+        conn.update(worksheet=tab, data=final)
+        refresh_all_caches()
+        return True
+    except Exception as e:
+        st.error(f"❌ บันทึกล้มเหลว: {e}")
+        return False
         elif tab == "Monthly":
             df['type'] = 'Monthly'
             if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
