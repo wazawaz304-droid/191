@@ -111,7 +111,7 @@ def save_to_tab(df, tab):
             if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
         elif tab == "Expense":
             df['type'] = 'Expense'
-           if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
+            if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
             # ตรวจสอบว่ามี unit_price หรือไม่ ถ้าไม่มีให้คำนวณซ้ำอีกทีเพื่อความชัวร์
             if 'unit_price' not in df.columns:
                 df['unit_price'] = clean_numeric(df, 'total_price') / clean_numeric(df, 'qty').replace(0, 1)
