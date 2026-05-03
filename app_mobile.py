@@ -71,22 +71,26 @@ def call_gemini_3_1(prompt, contents=None, is_complex_content=False):
 
 def process_extraction(data, p_type, is_bytes=False, mime=None):
     now_str = datetime.now().strftime("%Y-%m-%d")
-    if p_type == "Expense":
-        # เพิ่ม 'ชื่อมาตรฐาน' และ 'unit_price' เข้าไปในคำสั่ง
-        p = f"""สกัดข้อมูลรายจ่ายจากบิลเป็น JSON โดยมีเงื่อนไข:
-        1. 'name': ให้เปลี่ยนชื่อสินค้าที่คล้ายกันให้เป็นชื่อมาตรฐานเดียวกันเสมอ 
-           (เช่น 'อกไก่', 'ไก่สด', 'น่องไก่' -> ให้ใช้ชื่อ 'ไก่')
-           (เช่น 'น้ำมันพืช 1 ลิตร', 'น้ำมันองุ่น' -> ให้ใช้ชื่อ 'น้ำมัน')
-        2. 'unit_price': ให้คำนวณราคาต่อหน่วย (total_price หารด้วย qty)
+if p_type == "Expense":
+        # เตรียมรายชื่อสินค้าเดิมเป็นข้อความเพื่อให้ AI อ่าน
+        names_list = ", ".join(existing_names) if existing_names else "ยังไม่มีข้อมูล"
+        
+        p = f"""คุณคือสมุห์บัญชีร้าน 'เนฟ หมี่ไก่ฉีก 304' สกัดข้อมูลรายจ่ายเป็น JSON array 
+        โดยมีกฎการตัดสินใจเรื่องชื่อสินค้า (Mapping Rule) ดังนี้:
+        1. เปรียบเทียบสินค้าที่สกัดได้กับ 'รายชื่อเดิมในระบบ' ต่อไปนี้: [{names_list}]
+        2. หากมีความคล้ายคลึงกัน (เช่น 'อกไก่สด' คล้ายกับ 'ไก่') ให้ใช้ชื่อจาก 'รายชื่อเดิมในระบบ' เท่านั้น
+        3. หากไม่คล้ายกับชื่อใดเลย ให้ใช้ชื่อตามที่สกัดได้จริงจากบิล
+        4. ให้คำนวณ 'unit_price' (ราคาต่อหน่วย) โดยนำ total_price หารด้วย qty
+        
         รูปแบบ JSON: [{{
             'date': '{now_str}', 
-            'name': 'ชื่อมาตรฐาน', 
+            'name': 'ชื่อสินค้าที่จับคู่แล้ว', 
             'qty': 0, 
             'unit': 'หน่วย', 
             'unit_price': 0, 
             'total_price': 0
         }}]
-        หากบิลไม่ระบุวันที่ให้ใช้ {now_str}"""
+        """
     elif p_type == "หน้าร้าน":
         p = f"สกัดยอดหน้าร้านจากข้อความหรือเสียง: [{{'date': '{now_str}', 'app': 'หน้าร้าน', 'net_income': ยอดขาย}}]. วันนี้คือวันที่ {now_str} ให้ใช้วันที่นี้เป็นค่าเริ่มต้น"
     elif p_type == "สรุปรายเดือน":
@@ -260,18 +264,41 @@ elif page == "💰 บันทึกรายรับ":
 # --- 💸 บันทึกรายจ่าย (คงเดิม) ---
 elif page == "💸 บันทึกรายจ่าย":
     st.header("💸 บันทึกรายจ่ายวัตถุดิบ")
+    
+    # ดึงรายชื่อสินค้าเดิมที่มีอยู่ในชีตมาเตรียมไว้
+    df_existing = load_data("Expense")
+    existing_items = []
+    if not df_existing.empty and 'name' in df_existing.columns:
+        existing_items = df_existing['name'].unique().tolist()
+
     method = st.radio("เลือกวิธี:", ["ยังไม่เลือก", "📸 แสกนบิล/อัปโหลดรูป", "🎙️ บันทึกด้วยเสียง"], horizontal=True)
     res_ex = None
     
     if method == "📸 แสกนบิล/อัปโหลดรูป":
         sub = st.radio("ช่องทาง:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
         img = st.camera_input("สแกนบิล") if sub == "📷 ถ่ายรูปสด" else st.file_uploader("เลือกรูป", type=['jpg','png','jpeg'])
+        
         if img and st.button("🪄 วิเคราะห์บิล"):
-            res_ex = process_extraction(Image.open(img) if sub=="📷 ถ่ายรูปสด" else img.read(), "Expense", is_bytes=(sub=="📁 เลือกไฟล์"), mime="image/jpeg")
+            # ส่ง existing_items เข้าไปด้วย
+            res_ex = process_extraction(
+                Image.open(img) if sub=="📷 ถ่ายรูปสด" else img.read(), 
+                "Expense", 
+                is_bytes=(sub=="📁 เลือกไฟล์"), 
+                mime="image/jpeg",
+                existing_names=existing_items
+            )
+            
     elif method == "🎙️ บันทึกด้วยเสียง":
         audio_ex = st.audio_input("พูดรายการรายจ่าย...")
         if audio_ex and st.button("🚀 แปลงเสียง"):
-            res_ex = process_extraction(audio_ex.read(), "Expense", is_bytes=True, mime=audio_ex.type)
+            # ส่ง existing_items เข้าไปด้วย
+            res_ex = process_extraction(
+                audio_ex.read(), 
+                "Expense", 
+                is_bytes=True, 
+                mime=audio_ex.type,
+                existing_names=existing_items
+            )
 
     if res_ex:
         st.session_state.tmp_exp = pd.DataFrame(res_ex)
