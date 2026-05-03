@@ -287,13 +287,9 @@ elif page == "💰 บันทึกรายรับ":
 
 # --- 💸 บันทึกรายจ่าย (คงเดิม) ---
 elif page == "💸 บันทึกรายจ่าย":
-    st.header("💸 บันทึกรายจ่ายวัตถุดิบ")
-    
-    # ดึงรายชื่อสินค้าเดิมที่มีอยู่ในชีตมาเตรียมไว้
-    df_existing = load_data("Expense")
-    existing_items = []
-    if not df_existing.empty and 'name' in df_existing.columns:
-        existing_items = df_existing['name'].unique().tolist()
+    # 1. ดึงข้อมูลเดิมมาเตรียมไว้ก่อน
+    df_exp = load_data("Expense")
+    existing_list = df_exp['name'].unique().tolist() if not df_exp.empty else []
 
     method = st.radio("เลือกวิธี:", ["ยังไม่เลือก", "📸 แสกนบิล/อัปโหลดรูป", "🎙️ บันทึกด้วยเสียง"], horizontal=True)
     res_ex = None
@@ -302,15 +298,9 @@ elif page == "💸 บันทึกรายจ่าย":
         sub = st.radio("ช่องทาง:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
         img = st.camera_input("สแกนบิล") if sub == "📷 ถ่ายรูปสด" else st.file_uploader("เลือกรูป", type=['jpg','png','jpeg'])
         
-        if img and st.button("🪄 วิเคราะห์บิล"):
-            # ส่ง existing_items เข้าไปด้วย
-            res_ex = process_extraction(
-                Image.open(img) if sub=="📷 ถ่ายรูปสด" else img.read(), 
-                "Expense", 
-                is_bytes=(sub=="📁 เลือกไฟล์"), 
-                mime="image/jpeg",
-                existing_names=existing_items
-            )
+        if st.button("🪄 วิเคราะห์บิล"):
+        # 2. ส่ง existing_list เข้าไปให้ AI ช่วยจับคู่
+        res_ex = process_extraction(data, "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_list)
             
     elif method == "🎙️ บันทึกด้วยเสียง":
         audio_ex = st.audio_input("พูดรายการรายจ่าย...")
