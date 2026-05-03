@@ -72,7 +72,21 @@ def call_gemini_3_1(prompt, contents=None, is_complex_content=False):
 def process_extraction(data, p_type, is_bytes=False, mime=None):
     now_str = datetime.now().strftime("%Y-%m-%d")
     if p_type == "Expense":
-        p = f"สกัดสินค้าเป็น JSON: [{{'date': '{now_str}', 'name': 'สินค้า', 'qty': 1, 'unit': 'หน่วย', 'total_price': 0}}]. หากบิลไม่ระบุวันที่ให้ใช้ {now_str}"
+        # เพิ่ม 'ชื่อมาตรฐาน' และ 'unit_price' เข้าไปในคำสั่ง
+        p = f"""สกัดข้อมูลรายจ่ายจากบิลเป็น JSON โดยมีเงื่อนไข:
+        1. 'name': ให้เปลี่ยนชื่อสินค้าที่คล้ายกันให้เป็นชื่อมาตรฐานเดียวกันเสมอ 
+           (เช่น 'อกไก่', 'ไก่สด', 'น่องไก่' -> ให้ใช้ชื่อ 'ไก่')
+           (เช่น 'น้ำมันพืช 1 ลิตร', 'น้ำมันองุ่น' -> ให้ใช้ชื่อ 'น้ำมัน')
+        2. 'unit_price': ให้คำนวณราคาต่อหน่วย (total_price หารด้วย qty)
+        รูปแบบ JSON: [{{
+            'date': '{now_str}', 
+            'name': 'ชื่อมาตรฐาน', 
+            'qty': 0, 
+            'unit': 'หน่วย', 
+            'unit_price': 0, 
+            'total_price': 0
+        }}]
+        หากบิลไม่ระบุวันที่ให้ใช้ {now_str}"""
     elif p_type == "หน้าร้าน":
         p = f"สกัดยอดหน้าร้านจากข้อความหรือเสียง: [{{'date': '{now_str}', 'app': 'หน้าร้าน', 'net_income': ยอดขาย}}]. วันนี้คือวันที่ {now_str} ให้ใช้วันที่นี้เป็นค่าเริ่มต้น"
     elif p_type == "สรุปรายเดือน":
@@ -97,7 +111,10 @@ def save_to_tab(df, tab):
             if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
         elif tab == "Expense":
             df['type'] = 'Expense'
-            if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
+           if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
+            # ตรวจสอบว่ามี unit_price หรือไม่ ถ้าไม่มีให้คำนวณซ้ำอีกทีเพื่อความชัวร์
+            if 'unit_price' not in df.columns:
+                df['unit_price'] = clean_numeric(df, 'total_price') / clean_numeric(df, 'qty').replace(0, 1)
         elif tab == "Monthly":
             df['type'] = 'Monthly'
             if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
