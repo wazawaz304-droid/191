@@ -176,20 +176,46 @@ elif page == "💰 บันทึกรายรับ":
                 st.rerun()
 
 elif page == "💸 บันทึกรายจ่าย":
-    st.header("💸 บันทึกรายจ่ายวัตถุดิบ")
+    st.header("💸 บันทึกรายจ่ายวัตถุดิบ (AI Extraction)")
+    
+    # 1. ดึงข้อมูลเดิมมาเตรียมความพร้อม (กันชื่อแตก)
     df_exp_db = load_data("Expense")
     ex_names = df_exp_db['name'].unique().tolist() if not df_exp_db.empty else []
     
-    file = st.file_uploader("แสกนบิลรายจ่าย", type=['jpg','png','jpeg'])
-    if file and st.button("🪄 วิเคราะห์บิล"):
-        res = process_extraction(file.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=ex_names)
-        if res: st.session_state.tmp_exp = pd.DataFrame(res)
+    # 2. คืนค่าช่องทางบันทึกทั้ง 3 รูปแบบ
+    method = st.radio("เลือกวิธีบันทึกรายจ่าย:", ["📸 ถ่ายรูป/อัปโหลดบิล", "🎙️ บันทึกด้วยเสียง"], horizontal=True)
+    res_ex = None
+    
+    if method == "📸 ถ่ายรูป/อัปโหลดบิล":
+        sub = st.radio("ช่องทางรูปภาพ:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์จากเครื่อง"], horizontal=True)
+        
+        if sub == "📷 ถ่ายรูปสด":
+            img_input = st.camera_input("สแกนบิลรายจ่าย") # ช่องถ่ายรูปกลับมาแล้วครับ
+            if img_input and st.button("🪄 วิเคราะห์จากรูปถ่าย"):
+                res_ex = process_extraction(img_input.getvalue(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=ex_names)
+        else:
+            file_input = st.file_uploader("เลือกไฟล์รูปบิล (JPG/PNG)", type=['jpg','png','jpeg']) # ช่องอัปโหลด
+            if file_input and st.button("🪄 วิเคราะห์จากไฟล์"):
+                res_ex = process_extraction(file_input.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=ex_names)
+                
+    elif method == "🎙️ บันทึกด้วยเสียง":
+        audio_input = st.audio_input("กดปุ่มไมค์แล้วพูดรายการรายจ่าย (เช่น ไก่ 5 กิโล 400 บาท)") # ช่องบันทึกเสียง
+        if audio_input and st.button("🚀 แปลงเสียงเป็นข้อมูล"):
+            res_ex = process_extraction(audio_input.read(), "Expense", is_bytes=True, mime=audio_input.type, existing_names=ex_names)
+
+    # 3. ส่วนแสดงผลและการบันทึก (ห้ามหาย!)
+    if res_ex:
+        st.session_state.tmp_exp = pd.DataFrame(res_ex)
         
     if 'tmp_exp' in st.session_state:
-        edited = st.data_editor(st.session_state.tmp_exp, use_container_width=True)
-        if st.button("💾 ยืนยันบันทึกรายจ่าย"):
-            if save_to_tab(edited, "Expense"):
+        st.subheader("🔍 ตรวจสอบและแก้ไขข้อมูลที่ AI สกัดได้")
+        # ตารางให้พี่แก้ได้ก่อนบันทึก
+        edited_ex = st.data_editor(st.session_state.tmp_exp, use_container_width=True)
+        
+        if st.button("💾 ยืนยันบันทึกลง Google Sheets"):
+            if save_to_tab(edited_ex, "Expense"):
                 del st.session_state.tmp_exp
+                st.toast("บันทึกรายจ่ายเรียบร้อย!", icon="💰")
                 st.rerun()
 
 elif page == "📋 ข้อมูลทั้งหมด":
