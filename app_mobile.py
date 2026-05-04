@@ -227,6 +227,20 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.divider()
+
+# Break-even settings — เก็บใน session_state ให้ทุกหน้าเข้าถึงได้
+with st.sidebar.expander("⚙️ ต้นทุนคงที่ (Break-even)"):
+    st.session_state.setdefault("be_rent",    4000)
+    st.session_state.setdefault("be_electric", 800)
+    st.session_state.setdefault("be_water",    400)
+    st.session_state.setdefault("be_other",      0)
+
+    st.session_state["be_rent"]     = st.sidebar.number_input("🏠 ค่าเช่า/เดือน (฿)",     value=st.session_state["be_rent"],     step=500, min_value=0)
+    st.session_state["be_electric"] = st.sidebar.number_input("💡 ค่าไฟ/เดือน (฿)",       value=st.session_state["be_electric"], step=100, min_value=0)
+    st.session_state["be_water"]    = st.sidebar.number_input("🚿 ค่าน้ำ/เดือน (฿)",      value=st.session_state["be_water"],    step=100, min_value=0)
+    st.session_state["be_other"]    = st.sidebar.number_input("📦 ค่าคงที่อื่นๆ/เดือน (฿)", value=st.session_state["be_other"],    step=100, min_value=0)
+
+st.sidebar.divider()
 if st.sidebar.button("🔄 รีเฟรชข้อมูล"):
     st.cache_data.clear()
     st.rerun()
@@ -252,8 +266,45 @@ if page == "📊 Dashboard รายวัน":
     t_exp = df_e['total_price'].sum() if not df_e.empty else 0
     profit = t_inc - t_exp
 
-    # KPI row
-    c1, c2, c3 = st.columns(3)
+    # ── Break-even คำนวณจาก sidebar ──
+    be_rent     = st.session_state.get("be_rent",     4000)
+    be_electric = st.session_state.get("be_electric",  800)
+    be_water    = st.session_state.get("be_water",     400)
+    be_other    = st.session_state.get("be_other",       0)
+    fixed_monthly      = be_rent + be_electric + be_water + be_other
+    days_in_month      = 26
+    fixed_daily        = fixed_monthly / days_in_month
+    food_cost_pct      = (t_exp / t_inc * 100) if t_inc > 0 else 0
+    contribution_margin = 1 - (food_cost_pct / 100)
+    be_daily           = (fixed_daily / contribution_margin) if contribution_margin > 0 else 0
+
+    today     = pd.Timestamp.now().normalize()
+    today_inc = 0
+    if not df_i.empty and "date" in df_i.columns:
+        today_inc = df_i[df_i["date"] >= today]["net_income"].sum()
+
+    passed_be = today_inc >= be_daily and be_daily > 0
+    gap       = be_daily - today_inc
+
+    # Banner
+    if be_daily > 0:
+        if passed_be:
+            surplus = today_inc - be_daily
+            st.markdown(
+                f"<div class='success-card'>✅ <b>ผ่าน Break-even แล้ว!</b> "
+                f"วันนี้รายรับ ฿{today_inc:,.0f} — เกินเป้า ฿{be_daily:,.0f} อยู่ <b>฿{surplus:,.0f}</b></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"<div class='warn-card'>⚠️ <b>ยังไม่ถึง Break-even</b> "
+                f"วันนี้รายรับ ฿{today_inc:,.0f} — ต้องขายเพิ่มอีก <b>฿{gap:,.0f}</b> "
+                f"(เป้าวันละ ฿{be_daily:,.0f})</div>",
+                unsafe_allow_html=True,
+            )
+
+    # KPI 4 ช่อง
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("💰 รายรับรวม (ทั้งชีต)",  f"฿{t_inc:,.0f}")
     c2.metric("📦 รายจ่ายรวม (ทั้งชีต)", f"฿{t_exp:,.0f}")
     c3.metric(
@@ -261,6 +312,40 @@ if page == "📊 Dashboard รายวัน":
         f"฿{profit:,.0f}",
         delta=f"{profit/t_inc*100:.1f}% margin" if t_inc > 0 else None,
     )
+    c4.metric(
+        "🎯 Break-even/วัน",
+        f"฿{be_daily:,.0f}" if be_daily > 0 else "ตั้งค่าก่อน",
+        delta="ผ่านแล้ว ✅" if passed_be else (f"ขาดอีก ฿{gap:,.0f}" if be_daily > 0 else None),
+        delta_color="normal" if passed_be else "inverse",
+    )
+
+    # Break-even detail
+    st.divider()
+    st.markdown("<div class='section-title'>📊 ต้นทุนคงที่ & Break-even วันนี้</div>", unsafe_allow_html=True)
+
+    be1, be2, be3, be4, be5 = st.columns(5)
+    be1.metric("🏠 ค่าเช่า/วัน",  f"฿{be_rent/days_in_month:,.0f}")
+    be2.metric("💡 ค่าไฟ/วัน",   f"฿{be_electric/days_in_month:,.0f}")
+    be3.metric("🚿 ค่าน้ำ/วัน",  f"฿{be_water/days_in_month:,.0f}")
+    be4.metric("📦 อื่นๆ/วัน",   f"฿{be_other/days_in_month:,.0f}")
+    be5.metric("📉 Food Cost %",  f"{food_cost_pct:.1f}%",
+               delta="เกิน 35%! ⚠️" if food_cost_pct > 35 else "ปกติ ✅",
+               delta_color="inverse" if food_cost_pct > 35 else "normal")
+
+    # Progress bar
+    if be_daily > 0:
+        pct = min(today_inc / be_daily, 1.0)
+        bar_color = "#22c55e" if passed_be else "#f59e0b"
+        bar_html = (
+            "<div style='margin:0.5rem 0 1.2rem'>"
+            f"<div style='display:flex;justify-content:space-between;font-size:0.78rem;color:#6b7280;margin-bottom:4px'>"
+            f"<span>รายรับวันนี้ ฿{today_inc:,.0f}</span><span>เป้า ฿{be_daily:,.0f}</span></div>"
+            f"<div style='background:#e5e7eb;border-radius:8px;height:10px;overflow:hidden'>"
+            f"<div style='background:{bar_color};width:{pct*100:.1f}%;height:100%;border-radius:8px'></div></div>"
+            f"<div style='font-size:0.75rem;color:#6b7280;margin-top:3px;text-align:right'>{pct*100:.0f}% of break-even</div>"
+            "</div>"
+        )
+        st.markdown(bar_html, unsafe_allow_html=True)
 
     st.divider()
 
@@ -283,35 +368,39 @@ if page == "📊 Dashboard รายวัน":
                 daily['rolling'] = daily['net_income'].rolling(7, min_periods=1).mean()
 
                 fig = go.Figure()
+                # สีแต่ละแอป — ชัดเจน แตกต่างกันมาก
                 colors = {
-    'Grab':      '#00b14f',   # เขียว
-    'Line Man':  '#0094ff',   # ฟ้าสด
-    'Shopee':    '#f97316',   # ส้ม
-    'foodpanda': '#e11d74',   # ชมพูบานเย็น
-    'หน้าร้าน':  '#8b5cf6',   # ม่วง
-}
-fallback = ['#06b6d4','#f43f5e','#eab308','#14b8a6','#64748b']
-fb_idx = 0
-for app in df_fi.get('app', pd.Series()).unique():
-    d = df_fi[df_fi['app'] == app]
-    if app not in colors:
-        colors[app] = fallback[fb_idx % len(fallback)]
-        fb_idx += 1
-    fig.add_trace(go.Bar(
-        x=d['date'], y=d['net_income'], name=app,
-        marker_color=colors[app],
-        marker_line_width=0,
-        opacity=0.92,
-    ))
-                fig.add_trace(go.Scatter(x=daily['date'], y=daily['rolling'],
-                                         name='เฉลี่ย 7 วัน', mode='lines',
-                                         line=dict(color='#f59e0b', dash='dot', width=2)))
+                    'Grab':     '#00b14f',   # เขียว Grab
+                    'Line Man': '#0094ff',   # ฟ้า Line Man
+                    'Shopee':   '#f97316',   # ส้ม Shopee
+                    'foodpanda':'#e11d74',   # ชมพู foodpanda
+                    'หน้าร้าน': '#8b5cf6',   # ม่วง หน้าร้าน
+                }
+                fallback = ['#06b6d4','#f43f5e','#eab308','#14b8a6','#64748b']
+                fb_idx = 0
+                for app in df_fi.get('app', pd.Series()).unique():
+                    d = df_fi[df_fi['app'] == app]
+                    if app not in colors:
+                        colors[app] = fallback[fb_idx % len(fallback)]
+                        fb_idx += 1
+                    fig.add_trace(go.Bar(
+                        x=d['date'], y=d['net_income'], name=app,
+                        marker_color=colors[app],
+                        marker_line_width=0,
+                        opacity=0.92,
+                    ))
+                fig.add_trace(go.Scatter(
+                    x=daily['date'], y=daily['rolling'],
+                    name='เฉลี่ย 7 วัน', mode='lines',
+                    line=dict(color='#fbbf24', dash='dot', width=2.5),
+                ))
                 fig.update_layout(
                     barmode='stack', hovermode='x unified',
                     title=f"รายรับย้อนหลัง {days} วัน",
                     plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                     legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
                     margin=dict(l=0, r=0, t=48, b=0),
+                    bargap=0.25,
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
