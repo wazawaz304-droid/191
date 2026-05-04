@@ -283,12 +283,26 @@ if page == "📊 Dashboard รายวัน":
                 daily['rolling'] = daily['net_income'].rolling(7, min_periods=1).mean()
 
                 fig = go.Figure()
-                colors = {"Grab":"#00b14f","Line Man":"#06c755","Shopee":"#ee4d2d",
-                          "foodpanda":"#d70f64","หน้าร้าน":"#1a6b4a"}
-                for app in df_fi.get('app', pd.Series()).unique():
-                    d = df_fi[df_fi['app'] == app]
-                    fig.add_trace(go.Bar(x=d['date'], y=d['net_income'], name=app,
-                                        marker_color=colors.get(app, "#6366f1")))
+                colors = {
+    'Grab':      '#00b14f',   # เขียว
+    'Line Man':  '#0094ff',   # ฟ้าสด
+    'Shopee':    '#f97316',   # ส้ม
+    'foodpanda': '#e11d74',   # ชมพูบานเย็น
+    'หน้าร้าน':  '#8b5cf6',   # ม่วง
+}
+fallback = ['#06b6d4','#f43f5e','#eab308','#14b8a6','#64748b']
+fb_idx = 0
+for app in df_fi.get('app', pd.Series()).unique():
+    d = df_fi[df_fi['app'] == app]
+    if app not in colors:
+        colors[app] = fallback[fb_idx % len(fallback)]
+        fb_idx += 1
+    fig.add_trace(go.Bar(
+        x=d['date'], y=d['net_income'], name=app,
+        marker_color=colors[app],
+        marker_line_width=0,
+        opacity=0.92,
+    ))
                 fig.add_trace(go.Scatter(x=daily['date'], y=daily['rolling'],
                                          name='เฉลี่ย 7 วัน', mode='lines',
                                          line=dict(color='#f59e0b', dash='dot', width=2)))
