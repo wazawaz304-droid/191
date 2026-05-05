@@ -17,6 +17,7 @@ st.set_page_config(
     page_title="Nave 304 - AI Business Master",
     layout="wide",
     page_icon="🍜",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
