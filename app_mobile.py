@@ -261,12 +261,11 @@ st.session_state.setdefault("be_electric",  800)
 st.session_state.setdefault("be_water",     400)
 st.session_state.setdefault("be_other",       0)
 
-with st.sidebar:
-    with st.expander("⚙️ ต้นทุนคงที่ (Break-even)"):
-        st.session_state["be_rent"]     = st.number_input("🏠 ค่าเช่า/เดือน (฿)",      value=st.session_state["be_rent"],     step=500, min_value=0)
-        st.session_state["be_electric"] = st.number_input("💡 ค่าไฟ/เดือน (฿)",        value=st.session_state["be_electric"], step=100, min_value=0)
-        st.session_state["be_water"]    = st.number_input("🚿 ค่าน้ำ/เดือน (฿)",       value=st.session_state["be_water"],    step=100, min_value=0)
-        st.session_state["be_other"]    = st.number_input("📦 ค่าคงที่อื่นๆ/เดือน (฿)", value=st.session_state["be_other"],    step=100, min_value=0)
+_be_exp = st.sidebar.expander("⚙️ ต้นทุนคงที่ (Break-even)")
+st.session_state["be_rent"]     = _be_exp.number_input("🏠 ค่าเช่า/เดือน (฿)",      value=st.session_state["be_rent"],     step=500, min_value=0)
+st.session_state["be_electric"] = _be_exp.number_input("💡 ค่าไฟ/เดือน (฿)",        value=st.session_state["be_electric"], step=100, min_value=0)
+st.session_state["be_water"]    = _be_exp.number_input("🚿 ค่าน้ำ/เดือน (฿)",       value=st.session_state["be_water"],    step=100, min_value=0)
+st.session_state["be_other"]    = _be_exp.number_input("📦 ค่าคงที่อื่นๆ/เดือน (฿)", value=st.session_state["be_other"],    step=100, min_value=0)
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 รีเฟรชข้อมูล"):
