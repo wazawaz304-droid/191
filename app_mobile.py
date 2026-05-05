@@ -27,22 +27,49 @@ html, body, [class*="css"] { font-family: 'IBM Plex Sans Thai', sans-serif !impo
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 1.25rem 2rem 3rem; max-width: 1300px; }
 
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: linear-gradient(175deg, #0d3d26 0%, #1a6b4a 100%);
+/* Sidebar — รองรับ Streamlit ทุกเวอร์ชัน */
+[data-testid="stSidebar"],
+[data-testid="stSidebarNav"],
+section[data-testid="stSidebar"],
+section[data-testid="stSidebar"] > div,
+section[data-testid="stSidebar"] > div:first-child {
+    background: linear-gradient(175deg, #0d3d26 0%, #1a6b4a 100%) !important;
+    background-color: #0d3d26 !important;
 }
-[data-testid="stSidebar"] * { color: rgba(255,255,255,0.9) !important; }
+[data-testid="stSidebar"] { color: rgba(255,255,255,0.9) !important; }
+[data-testid="stSidebar"] *:not(svg):not(path) { color: rgba(255,255,255,0.9) !important; }
 [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.15) !important; }
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] label { color: rgba(255,255,255,0.9) !important; }
+[data-testid="stSidebar"] small { color: rgba(255,255,255,0.6) !important; }
 [data-testid="stSidebar"] .stRadio label {
     padding: 0.5rem 0.9rem; border-radius: 8px; display: block;
     transition: background 0.15s; font-size: 0.875rem; cursor: pointer;
 }
 [data-testid="stSidebar"] .stRadio label:hover { background: rgba(255,255,255,0.1); }
-[data-testid="stSidebar"] .stButton button {
-    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+[data-testid="stSidebar"] .stButton > button {
+    background: rgba(255,255,255,0.12) !important;
+    border: 1px solid rgba(255,255,255,0.3) !important;
     color: #fff !important; width: 100%; border-radius: 8px;
 }
-[data-testid="stSidebar"] .stButton button:hover { background: rgba(255,255,255,0.22); }
+[data-testid="stSidebar"] .stButton > button:hover { background: rgba(255,255,255,0.22) !important; }
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] .stNumberInput input {
+    background: rgba(255,255,255,0.12) !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    color: #fff !important; border-radius: 8px !important;
+}
+[data-testid="stSidebar"] .stExpander {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    border-radius: 8px !important;
+}
+/* ซ่อนปุ่มปิด sidebar — ให้กด > ที่ขอบจอแทน */
+[data-testid="collapsedControl"] {
+    background: #1a6b4a !important;
+    border-radius: 0 8px 8px 0 !important;
+}
 
 /* Metric cards */
 [data-testid="stMetric"] {
