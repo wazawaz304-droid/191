@@ -91,39 +91,42 @@ def process_extraction(data, p_type, is_bytes=False, mime=None):
 def save_to_tab(df, tab):
     if conn is None or df.empty: return False
     try:
-        # 1. โหลดข้อมูลปัจจุบันจากชีต (เอาสดๆ มาเช็ก)
         existing = load_data(tab)
         
+        # จัดการข้อมูลให้ตรงตามโครงสร้าง 11 คอลัมน์ของพี่
         if tab == "Income":
             df['type'] = 'Income'
+            if 'name' not in df.columns: 
+                df['name'] = df['app'] + " Daily Income"
+            if 'qty' not in df.columns: df['qty'] = 1
+            if 'unit' not in df.columns: df['unit'] = "วัน"
+            if 'total_price' not in df.columns: df['total_price'] = df['net_income']
+            if 'unit_price' not in df.columns: df['unit_price'] = df['net_income']
+            
             # บังคับมาตรฐานชื่อแอป
-            df['app'] = df['app'].apply(lambda x: "GrabFood" if "grab" in str(x).lower() 
-                                       else ("LINE MAN" if "line" in str(x).lower() 
-                                       else ("ShopeeFood" if "shopee" in str(x).lower() else x)))
+            df['app'] = df['app'].apply(lambda x: "GrabFood" if "grab" in str(x).lower() else x)
+
+        # เรียงลำดับคอลัมน์ให้เป๊ะตามที่พี่แจ้งมา
+        cols_order = ['name', 'qty', 'unit', 'total_price', 'date', 'unit_price', 'app', 'net_income', 'gross_sales', 'gp_amount', 'type']
         
-        # 2. รวมข้อมูล
+        # เพิ่มคอลัมน์ที่ขาดให้เป็นค่าว่าง
+        for col in cols_order:
+            if col not in df.columns: df[col] = ""
+            
+        df = df[cols_order] # บังคับลำดับ
+
+        # รวมข้อมูลและลบตัวซ้ำ
         final = pd.concat([existing, df], ignore_index=True)
-
-        # 3. กำจัดตัวซ้ำ (หัวใจสำคัญ)
         if tab == "Income":
-            # แปลงวันที่เป็น String format เดียวกัน และปัดเศษเงินโอนให้เท่ากัน
             final['date'] = pd.to_datetime(final['date']).dt.strftime('%Y-%m-%d')
-            final['net_income'] = clean_numeric(final, 'net_income').round(2)
-            # เช็กซ้ำ 3 จุด: วันที่, แอป, ยอดเงิน
             final = final.drop_duplicates(subset=['date', 'app', 'net_income'], keep='first')
-            # เรียงใหม่ให้ของล่าสุดอยู่บนสุดเสมอ
-            final = final.sort_values(by='date', ascending=False)
-        
-        elif tab == "Expense":
-            final = final.drop_duplicates(subset=['date', 'name', 'total_price'], keep='first')
             final = final.sort_values(by='date', ascending=False)
 
-        # 4. อัปเดตกลับเข้า Google Sheets
         conn.update(worksheet=tab, data=final)
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"❌ ระบบบันทึกขัดข้อง: {e}")
+        st.error(f"❌ บันทึกล้มเหลว: {e}")
         return False
 
 # --- 4. UI Layout ---
