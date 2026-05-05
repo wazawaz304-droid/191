@@ -36,35 +36,53 @@ section[data-testid="stSidebar"] > div:first-child {
     background: linear-gradient(175deg, #0d3d26 0%, #1a6b4a 100%) !important;
     background-color: #0d3d26 !important;
 }
-[data-testid="stSidebar"] { color: rgba(255,255,255,0.9) !important; }
-[data-testid="stSidebar"] *:not(svg):not(path) { color: rgba(255,255,255,0.9) !important; }
-[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.15) !important; }
+
+/* ปรับสีตัวหนังสือใน Sidebar ให้ชัดเจนขึ้น */
+[data-testid="stSidebar"] { color: #FFFFFF !important; }
+[data-testid="stSidebar"] *:not(svg):not(path) { color: #FFFFFF !important; }
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span,
-[data-testid="stSidebar"] label { color: rgba(255,255,255,0.9) !important; }
-[data-testid="stSidebar"] small { color: rgba(255,255,255,0.6) !important; }
+[data-testid="stSidebar"] label { color: #FFFFFF !important; font-weight: 500; }
+[data-testid="stSidebar"] small { color: rgba(255,255,255,0.8) !important; }
+[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.2) !important; }
+
+/* ปรับแต่งช่อง Input ใน Sidebar ให้ตัวหนังสืออ่านง่ายและไม่กลืน */
+[data-testid="stSidebar"] input {
+    background: rgba(255,255,255,1.0) !important; /* เปลี่ยนพื้นหลังเป็นสีขาวทึบ */
+    color: #111827 !important; /* เปลี่ยนสีตัวหนังสือเป็นสีเข้ม */
+    border: 2px solid #1a6b4a !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+}
+
+/* ปรับแต่ง Number Input เฉพาะส่วน */
+[data-testid="stSidebar"] .stNumberInput div[data-baseweb="input"] {
+    background-color: white !important;
+    border-radius: 8px !important;
+}
+
 [data-testid="stSidebar"] .stRadio label {
     padding: 0.5rem 0.9rem; border-radius: 8px; display: block;
     transition: background 0.15s; font-size: 0.875rem; cursor: pointer;
+    color: #FFFFFF !important;
 }
-[data-testid="stSidebar"] .stRadio label:hover { background: rgba(255,255,255,0.1); }
+[data-testid="stSidebar"] .stRadio label:hover { background: rgba(255,255,255,0.15); }
+
 [data-testid="stSidebar"] .stButton > button {
-    background: rgba(255,255,255,0.12) !important;
-    border: 1px solid rgba(255,255,255,0.3) !important;
-    color: #fff !important; width: 100%; border-radius: 8px;
+    background: #ffffff !important;
+    border: none !important;
+    color: #0d3d26 !important; 
+    width: 100%; border-radius: 8px;
+    font-weight: 600 !important;
 }
-[data-testid="stSidebar"] .stButton > button:hover { background: rgba(255,255,255,0.22) !important; }
-[data-testid="stSidebar"] input,
-[data-testid="stSidebar"] .stNumberInput input {
-    background: rgba(255,255,255,0.12) !important;
-    border: 1px solid rgba(255,255,255,0.25) !important;
-    color: #fff !important; border-radius: 8px !important;
-}
+[data-testid="stSidebar"] .stButton > button:hover { background: #f0fdf4 !important; }
+
 [data-testid="stSidebar"] .stExpander {
-    background: rgba(255,255,255,0.07) !important;
-    border: 1px solid rgba(255,255,255,0.15) !important;
+    background: rgba(255,255,255,0.1) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
     border-radius: 8px !important;
 }
+
 /* ซ่อนปุ่มปิด sidebar — ให้กด > ที่ขอบจอแทน */
 [data-testid="collapsedControl"] {
     background: #1a6b4a !important;
@@ -237,7 +255,7 @@ def process_extraction(data, p_type, is_bytes=False, mime=None, existing_names=N
 # 5. SIDEBAR
 # ============================================================
 st.sidebar.markdown("## 🍜 Nave 304")
-st.sidebar.markdown("<small style='opacity:.65'>AI Business Master</small>", unsafe_allow_html=True)
+st.sidebar.markdown("<small style='opacity:.85'>AI Business Master</small>", unsafe_allow_html=True)
 st.sidebar.divider()
 
 page = st.sidebar.radio(
@@ -263,550 +281,177 @@ st.session_state.setdefault("be_other",       0)
 
 _be_exp = st.sidebar.expander("⚙️ ต้นทุนคงที่ (Break-even)")
 st.session_state["be_rent"]     = _be_exp.number_input("🏠 ค่าเช่า/เดือน (฿)",      value=st.session_state["be_rent"],     step=500, min_value=0)
-st.session_state["be_electric"] = _be_exp.number_input("💡 ค่าไฟ/เดือน (฿)",        value=st.session_state["be_electric"], step=100, min_value=0)
-st.session_state["be_water"]    = _be_exp.number_input("🚿 ค่าน้ำ/เดือน (฿)",       value=st.session_state["be_water"],    step=100, min_value=0)
-st.session_state["be_other"]    = _be_exp.number_input("📦 ค่าคงที่อื่นๆ/เดือน (฿)", value=st.session_state["be_other"],    step=100, min_value=0)
+st.session_state["be_electric"] = _be_exp.number_input("⚡ ค่าไฟ/เดือน (฿)",       value=st.session_state["be_electric"], step=100, min_value=0)
+st.session_state["be_water"]    = _be_exp.number_input("💧 ค่าน้ำ/เดือน (฿)",       value=st.session_state["be_water"],    step=50,  min_value=0)
+st.session_state["be_other"]    = _be_exp.number_input("🛠️ อื่นๆ/เดือน (฿)",        value=st.session_state["be_other"],    step=100, min_value=0)
+
+fixed_cost_monthly = (
+    st.session_state["be_rent"] + 
+    st.session_state["be_electric"] + 
+    st.session_state["be_water"] + 
+    st.session_state["be_other"]
+)
 
 st.sidebar.divider()
-if st.sidebar.button("🔄 รีเฟรชข้อมูล"):
+if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
     st.cache_data.clear()
     st.rerun()
 
 # ============================================================
-# 6. PAGE — DASHBOARD รายวัน
+# 6. MAIN CONTENT
 # ============================================================
 if page == "📊 Dashboard รายวัน":
-    st.markdown("<div class='page-title'>📊 Dashboard รายวัน</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>ภาพรวมรายรับ-รายจ่าย ทั้งหมดในชีต</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-title'>📊 แดชบอร์ดรายรับ-รายจ่ายรายวัน</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>สรุปความเคลื่อนไหวล่าสุดจาก Google Sheets</div>", unsafe_allow_html=True)
 
     df_i = load_data("Income")
     df_e = load_data("Expense")
 
-    if not df_i.empty:
-        df_i['net_income'] = clean_numeric(df_i, 'net_income')
-        df_i['date']       = pd.to_datetime(df_i['date'], errors='coerce')
-    if not df_e.empty:
-        df_e['total_price'] = clean_numeric(df_e, 'total_price')
-        df_e['date']        = pd.to_datetime(df_e['date'], errors='coerce')
+    df_i['net_income'] = clean_numeric(df_i, 'net_income')
+    df_e['total_price'] = clean_numeric(df_e, 'total_price')
+    df_i['date'] = pd.to_datetime(df_i['date'], errors='coerce')
+    df_e['date'] = pd.to_datetime(df_e['date'], errors='coerce')
 
-    t_inc = df_i['net_income'].sum() if not df_i.empty else 0
-    t_exp = df_e['total_price'].sum() if not df_e.empty else 0
-    profit = t_inc - t_exp
+    t_inc = df_i['net_income'].sum()
+    t_exp = df_e['total_price'].sum()
 
-    # ── Break-even คำนวณจาก sidebar ──
-    be_rent     = st.session_state.get("be_rent",     4000)
-    be_electric = st.session_state.get("be_electric",  800)
-    be_water    = st.session_state.get("be_water",     400)
-    be_other    = st.session_state.get("be_other",       0)
-    fixed_monthly      = be_rent + be_electric + be_water + be_other
-    days_in_month      = 26
-    fixed_daily        = fixed_monthly / days_in_month
-    food_cost_pct      = (t_exp / t_inc * 100) if t_inc > 0 else 0
-    contribution_margin = 1 - (food_cost_pct / 100)
-    be_daily           = (fixed_daily / contribution_margin) if contribution_margin > 0 else 0
-
-    today     = pd.Timestamp.now().normalize()
-    today_inc = 0
-    if not df_i.empty and "date" in df_i.columns:
-        today_inc = df_i[df_i["date"] >= today]["net_income"].sum()
-
-    passed_be = today_inc >= be_daily and be_daily > 0
-    gap       = be_daily - today_inc
-
-    # Banner
-    if be_daily > 0:
-        if passed_be:
-            surplus = today_inc - be_daily
-            st.markdown(
-                f"<div class='success-card'>✅ <b>ผ่าน Break-even แล้ว!</b> "
-                f"วันนี้รายรับ ฿{today_inc:,.0f} — เกินเป้า ฿{be_daily:,.0f} อยู่ <b>฿{surplus:,.0f}</b></div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f"<div class='warn-card'>⚠️ <b>ยังไม่ถึง Break-even</b> "
-                f"วันนี้รายรับ ฿{today_inc:,.0f} — ต้องขายเพิ่มอีก <b>฿{gap:,.0f}</b> "
-                f"(เป้าวันละ ฿{be_daily:,.0f})</div>",
-                unsafe_allow_html=True,
-            )
-
-    # KPI 4 ช่อง
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💰 รายรับรวม (ทั้งชีต)",  f"฿{t_inc:,.0f}")
-    c2.metric("📦 รายจ่ายรวม (ทั้งชีต)", f"฿{t_exp:,.0f}")
-    c3.metric(
-        "⚖️ กำไรขั้นต้น",
-        f"฿{profit:,.0f}",
-        delta=f"{profit/t_inc*100:.1f}% margin" if t_inc > 0 else None,
-    )
-    c4.metric(
-        "🎯 Break-even/วัน",
-        f"฿{be_daily:,.0f}" if be_daily > 0 else "ตั้งค่าก่อน",
-        delta="ผ่านแล้ว ✅" if passed_be else (f"ขาดอีก ฿{gap:,.0f}" if be_daily > 0 else None),
-        delta_color="normal" if passed_be else "inverse",
-    )
-
-    # Break-even detail
-    st.divider()
-    st.markdown("<div class='section-title'>📊 ต้นทุนคงที่ & Break-even วันนี้</div>", unsafe_allow_html=True)
-
-    be1, be2, be3, be4, be5 = st.columns(5)
-    be1.metric("🏠 ค่าเช่า/วัน",  f"฿{be_rent/days_in_month:,.0f}")
-    be2.metric("💡 ค่าไฟ/วัน",   f"฿{be_electric/days_in_month:,.0f}")
-    be3.metric("🚿 ค่าน้ำ/วัน",  f"฿{be_water/days_in_month:,.0f}")
-    be4.metric("📦 อื่นๆ/วัน",   f"฿{be_other/days_in_month:,.0f}")
-    be5.metric("📉 Food Cost %",  f"{food_cost_pct:.1f}%",
-               delta="เกิน 35%! ⚠️" if food_cost_pct > 35 else "ปกติ ✅",
-               delta_color="inverse" if food_cost_pct > 35 else "normal")
-
-    # Progress bar
-    if be_daily > 0:
-        pct = min(today_inc / be_daily, 1.0)
-        bar_color = "#22c55e" if passed_be else "#f59e0b"
-        bar_html = (
-            "<div style='margin:0.5rem 0 1.2rem'>"
-            f"<div style='display:flex;justify-content:space-between;font-size:0.78rem;color:#6b7280;margin-bottom:4px'>"
-            f"<span>รายรับวันนี้ ฿{today_inc:,.0f}</span><span>เป้า ฿{be_daily:,.0f}</span></div>"
-            f"<div style='background:#e5e7eb;border-radius:8px;height:10px;overflow:hidden'>"
-            f"<div style='background:{bar_color};width:{pct*100:.1f}%;height:100%;border-radius:8px'></div></div>"
-            f"<div style='font-size:0.75rem;color:#6b7280;margin-top:3px;text-align:right'>{pct*100:.0f}% of break-even</div>"
-            "</div>"
-        )
-        st.markdown(bar_html, unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("💰 รายรับสะสม", f"฿{t_inc:,.0f}")
+    c2.metric("📦 รายจ่ายสต๊อก", f"฿{t_exp:,.0f}")
+    c3.metric("⚖️ กำไรขั้นต้น", f"฿{t_inc - t_exp:,.0f}", delta=f"{t_inc - t_exp:,.0f}")
 
     st.divider()
 
-    # ── ตัวกรองช่วงเวลา ──
-    days = st.select_slider(
-        "ดูย้อนหลัง:",
-        options=[7, 14, 30, 60, 90, 180, 365],
-        value=30,
-        format_func=lambda x: f"{x} วัน" if x < 365 else "1 ปี",
-    )
-    cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
+    t_inc_tab, t_exp_tab, t_be_tab = st.tabs(["📅 แนวโน้มรายรับ", "🛒 สรุปรายจ่าย", "🎯 จุดคุ้มทุน (BEP)"])
 
-    tab_inc, tab_exp, tab_price = st.tabs(["📅 รายรับรายวัน", "🛒 รายจ่ายวัตถุดิบ", "📈 ราคาวัตถุดิบ"])
-
-    with tab_inc:
-        if not df_i.empty:
-            df_fi = df_i[df_i['date'] >= cutoff].copy()
-            if not df_fi.empty:
-                daily = df_fi.groupby('date')['net_income'].sum().reset_index()
-                daily['rolling'] = daily['net_income'].rolling(7, min_periods=1).mean()
-
-                fig = go.Figure()
-                # สีแต่ละแอป — ชัดเจน แตกต่างกันมาก
-                colors = {
-                    'Grab':     '#00b14f',   # เขียว Grab
-                    'Line Man': '#0094ff',   # ฟ้า Line Man
-                    'Shopee':   '#f97316',   # ส้ม Shopee
-                    'foodpanda':'#e11d74',   # ชมพู foodpanda
-                    'หน้าร้าน': '#8b5cf6',   # ม่วง หน้าร้าน
-                }
-                fallback = ['#06b6d4','#f43f5e','#eab308','#14b8a6','#64748b']
-                fb_idx = 0
-                for app in df_fi.get('app', pd.Series()).unique():
-                    d = df_fi[df_fi['app'] == app]
-                    if app not in colors:
-                        colors[app] = fallback[fb_idx % len(fallback)]
-                        fb_idx += 1
-                    fig.add_trace(go.Bar(
-                        x=d['date'], y=d['net_income'], name=app,
-                        marker_color=colors[app],
-                        marker_line_width=0,
-                        opacity=0.92,
-                    ))
-                fig.add_trace(go.Scatter(
-                    x=daily['date'], y=daily['rolling'],
-                    name='เฉลี่ย 7 วัน', mode='lines',
-                    line=dict(color='#fbbf24', dash='dot', width=2.5),
-                ))
-                fig.update_layout(
-                    barmode='stack', hovermode='x unified',
-                    title=f"รายรับย้อนหลัง {days} วัน",
-                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                    margin=dict(l=0, r=0, t=48, b=0),
-                    bargap=0.25,
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info(f"ไม่มีข้อมูลรายรับในช่วง {days} วันที่ผ่านมา")
+    with t_inc_tab:
+        zoom = st.radio("ดูย้อนหลัง:", [7, 30, 60, 90], horizontal=True, format_func=lambda x: f"{x} วัน", key="z_daily")
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=zoom)
+        df_f = df_i[df_i['date'] >= cutoff].copy()
+        if not df_f.empty:
+            daily = df_f.groupby('date')['net_income'].sum().reset_index()
+            daily['rolling'] = daily['net_income'].rolling(window=7).mean()
+            fig = go.Figure()
+            for app in df_f['app'].unique():
+                d = df_f[df_f['app'] == app]
+                fig.add_trace(go.Bar(x=d['date'], y=d['net_income'], name=app))
+            fig.add_trace(go.Scatter(x=daily['date'], y=daily['rolling'], name='เฉลี่ย 7 วัน', line=dict(color='#f59e0b', width=3, dash='dot')))
+            fig.update_layout(barmode='stack', hovermode="x unified", height=400, margin=dict(t=30, b=0, l=0, r=0))
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("ยังไม่มีข้อมูลรายรับ")
+            st.info("ไม่มีข้อมูลในช่วงนี้")
 
-    with tab_exp:
+    with t_exp_tab:
         if not df_e.empty:
-            col_l, col_r = st.columns(2)
-            with col_l:
-                fig_pie = px.pie(df_e, values='total_price', names='name',
-                                 hole=0.42, title="สัดส่วนรายจ่ายทั้งหมด")
-                fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                                      margin=dict(l=0, r=0, t=48, b=0))
-                st.plotly_chart(fig_pie, use_container_width=True)
-            with col_r:
-                top = df_e.groupby('name')['total_price'].sum().nlargest(8).reset_index()
-                fig_bar = px.bar(top, x='total_price', y='name', orientation='h',
-                                 color='total_price', color_continuous_scale='Greens',
-                                 title="Top 8 รายจ่ายวัตถุดิบ",
-                                 labels={'total_price': '฿', 'name': ''})
-                fig_bar.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)',
-                                      paper_bgcolor='rgba(0,0,0,0)',
-                                      margin=dict(l=0, r=0, t=48, b=0))
-                st.plotly_chart(fig_bar, use_container_width=True)
+            fig_pie = px.pie(df_e, values='total_price', names='name', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_pie.update_layout(height=400, margin=dict(t=30, b=0, l=0, r=0))
+            st.plotly_chart(fig_pie, use_container_width=True)
         else:
             st.info("ยังไม่มีข้อมูลรายจ่าย")
 
-    with tab_price:
-        if not df_e.empty and 'name' in df_e.columns:
-            item = st.selectbox("เลือกวัตถุดิบ:", sorted(df_e['name'].dropna().unique()))
-            df_it = df_e[df_e['name'] == item].sort_values('date').copy()
-            qty = clean_numeric(df_it, 'qty').replace(0, 1)
-            df_it['unit_price'] = df_it['total_price'] / qty
+    with t_be_tab:
+        st.markdown("<div class='section-title'>การวิเคราะห์จุดคุ้มทุน (Break-even Analysis)</div>", unsafe_allow_html=True)
+        # คำนวณกำไรต่อวัน (เฉลี่ย 30 วันล่าสุด)
+        df_30 = df_i[df_i['date'] >= (pd.Timestamp.now() - pd.Timedelta(days=30))]
+        avg_daily_net = df_30['net_income'].sum() / 30 if not df_30.empty else 0
+        
+        col_be1, col_be2 = st.columns(2)
+        with col_be1:
+            st.markdown(f"""
+            <div class='info-card'>
+                <b>📊 สรุปต้นทุนคงที่:</b><br>
+                • รวมทั้งหมด: ฿{fixed_cost_monthly:,.0f} / เดือน<br>
+                • เฉลี่ยต่อวัน: ฿{fixed_cost_monthly/30:,.2f}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_be2:
+            if avg_daily_net > 0:
+                days_to_be = fixed_cost_monthly / avg_daily_net
+                st.markdown(f"""
+                <div class='success-card'>
+                    <b>🎯 เป้าหมายความปลอดภัย:</b><br>
+                    • รายได้เฉลี่ยปัจจุบัน: ฿{avg_daily_net:,.0f} / วัน<br>
+                    • ต้องขายให้ได้ <b>{days_to_be:.1f} วัน</b> เพื่อคุ้มทุนคงที่
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.warning("ยังไม่มีข้อมูลรายได้เฉลี่ยเพื่อคำนวณ")
 
-            if len(df_it) >= 2:
-                last, prev = df_it['unit_price'].iloc[-1], df_it['unit_price'].iloc[-2]
-                chg = (last - prev) / prev * 100 if prev > 0 else 0
-                ca, cb = st.columns(2)
-                ca.metric("ราคาล่าสุด/หน่วย", f"฿{last:.2f}",
-                          delta=f"{chg:+.1f}% vs ครั้งก่อน", delta_color="inverse")
-                cb.metric("ซื้อทั้งหมด", f"{len(df_it)} ครั้ง",
-                          delta=f"รวม ฿{df_it['total_price'].sum():,.0f}")
-                if chg >= 10:
-                    st.markdown(
-                        f"<div class='warn-card'>⚠️ ราคา <b>{item}</b> เพิ่มขึ้น {chg:.1f}% จากครั้งก่อน</div>",
-                        unsafe_allow_html=True,
-                    )
-
-            fig_l = px.line(df_it, x='date', y='unit_price', markers=True,
-                            title=f"แนวโน้มราคา {item} ต่อหน่วย",
-                            labels={'unit_price': '฿/หน่วย'})
-            fig_l.update_traces(line_color='#1a6b4a', marker_color='#1a6b4a')
-            fig_l.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                                 margin=dict(l=0, r=0, t=48, b=0))
-            st.plotly_chart(fig_l, use_container_width=True)
-        else:
-            st.info("ยังไม่มีข้อมูลรายจ่าย")
-
-# ============================================================
-# 7. PAGE — วิเคราะห์รายเดือน
-# ============================================================
 elif page == "📈 วิเคราะห์รายเดือน":
-    st.markdown("<div class='page-title'>📈 วิเคราะห์รายเดือน</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>เปรียบเทียบ Gross vs Net · ค่า GP · แนวโน้ม</div>", unsafe_allow_html=True)
-
+    st.markdown("<div class='page-title'>📈 วิเคราะห์รายเดือน (Deep Dive)</div>", unsafe_allow_html=True)
     df_m = load_data("Monthly")
-
     if not df_m.empty:
-        for c in ['net_income', 'gross', 'fees', 'ads', 'discounts']:
-            df_m[c] = clean_numeric(df_m, c)
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("💰 ยอดโอนสุทธิรวม",    f"฿{df_m['net_income'].sum():,.0f}")
-        m2.metric("📊 ยอดขายรวม (Gross)",  f"฿{df_m['gross'].sum():,.0f}")
-        m3.metric("📉 ค่า GP รวม",          f"฿{df_m['fees'].sum():,.0f}")
-        m4.metric("📣 ค่าโฆษณารวม",         f"฿{df_m['ads'].sum():,.0f}")
-
-        st.divider()
-        cl, cr = st.columns([2, 1])
-        with cl:
-            fig_m = go.Figure()
-            fig_m.add_trace(go.Bar(x=df_m['month_year'], y=df_m['gross'],
-                                   name='Gross', marker_color='#93c5fd'))
-            fig_m.add_trace(go.Bar(x=df_m['month_year'], y=df_m['net_income'],
-                                   name='Net', marker_color='#1a6b4a'))
-            fig_m.update_layout(
-                barmode='group', title='Gross vs Net รายเดือน',
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                margin=dict(l=0, r=0, t=48, b=0),
-            )
-            st.plotly_chart(fig_m, use_container_width=True)
-
-        with cr:
-            if df_m['fees'].sum() > 0 and 'platform' in df_m.columns:
-                fig_p = px.pie(df_m, values='fees', names='platform',
-                               hole=0.4, title='ค่า GP แยกแอป')
-                fig_p.update_layout(plot_bgcolor='rgba(0,0,0,0)',
-                                    paper_bgcolor='rgba(0,0,0,0)',
-                                    margin=dict(l=0, r=0, t=48, b=0))
-                st.plotly_chart(fig_p, use_container_width=True)
-
-        st.markdown("<div class='section-title'>📋 ตารางละเอียดรายเดือน</div>",
-                    unsafe_allow_html=True)
-        df_m['cost_%'] = ((df_m['fees'] + df_m['ads']) /
-                          df_m['gross'].replace(0, pd.NA) * 100).round(1)
-        df_m['net_%']  = (df_m['net_income'] /
-                          df_m['gross'].replace(0, pd.NA) * 100).round(1)
-        show_cols = [c for c in ['month_year','platform','gross','fees','ads',
-                                  'discounts','net_income','cost_%','net_%']
-                     if c in df_m.columns]
-        st.dataframe(
-            df_m[show_cols].sort_values('month_year', ascending=False),
-            use_container_width=True,
-            column_config={
-                'month_year':  'เดือน',
-                'platform':    'แอป',
-                'gross':       st.column_config.NumberColumn('Gross (฿)',    format='฿%.0f'),
-                'fees':        st.column_config.NumberColumn('GP (฿)',       format='฿%.0f'),
-                'ads':         st.column_config.NumberColumn('โฆษณา (฿)',    format='฿%.0f'),
-                'discounts':   st.column_config.NumberColumn('ส่วนลด (฿)',   format='฿%.0f'),
-                'net_income':  st.column_config.NumberColumn('Net (฿)',      format='฿%.0f'),
-                'cost_%':      st.column_config.NumberColumn('% ต้นทุน',     format='%.1f%%'),
-                'net_%':       st.column_config.NumberColumn('% Net Margin', format='%.1f%%'),
-            },
-        )
+        for c in ['net_income','gross','fees','ads']: df_m[c] = clean_numeric(df_m, c)
+        st.dataframe(df_m.sort_values('month_year', ascending=False), use_container_width=True)
     else:
-        st.info("ยังไม่มีข้อมูลรายเดือน — บันทึกสรุปรายเดือนก่อนครับ")
+        st.info("ยังไม่มีข้อมูลรายเดือน")
 
-# ============================================================
-# 8. PAGE — บันทึกรายรับ
-# ============================================================
 elif page == "💰 บันทึกรายรับ":
     st.markdown("<div class='page-title'>💰 บันทึกรายรับ</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>รองรับข้อความ · ไฟล์ · รูปภาพ · เสียง</div>",
-                unsafe_allow_html=True)
-
-    rtype  = st.radio("ประเภท:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"],
-                      horizontal=True)
-    method = st.radio("วิธีบันทึก:",
-                      ["⌨️ พิมพ์/วางข้อความ", "📷 ถ่ายรูป/อัปโหลด", "🎙️ บันทึกเสียง", "📁 ไฟล์ PDF"],
-                      horizontal=True)
-
+    rtype = st.radio("ประเภท:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"], horizontal=True)
+    method = st.radio("วิธีบันทึก:", ["⌨️ พิมพ์/วางข้อความ", "📁 อัปโหลดไฟล์"], horizontal=True)
     res = None
-
     if method == "⌨️ พิมพ์/วางข้อความ":
-        txt = st.text_area("วางข้อความรายงานยอดขายที่นี่:",
-                           placeholder="เช่น: Grab ยอดโอน 1,250 บาท วันที่ 1 พ.ค.",
-                           height=140)
-        if txt and st.button("🪄 วิเคราะห์ด้วย AI", type="primary"):
-            with st.spinner("AI กำลังวิเคราะห์..."):
-                res = process_extraction(txt, rtype)
-
-    elif method == "📷 ถ่ายรูป/อัปโหลด":
-        sub = st.radio("ช่องทาง:", ["📷 ถ่ายรูปสด", "🖼️ อัปโหลดรูป"], horizontal=True)
-        img_file = (st.camera_input("ถ่ายรูปหน้าจอสรุปยอด") if sub == "📷 ถ่ายรูปสด"
-                    else st.file_uploader("เลือกรูป (JPG/PNG)", type=['jpg','jpeg','png','webp']))
-        if img_file:
-            if sub == "🖼️ อัปโหลดรูป":
-                st.image(img_file, caption="รูปที่เลือก", use_container_width=True)
-            if st.button("🪄 ให้ AI สกัดข้อมูล", type="primary"):
-                with st.spinner("AI กำลังอ่านรูป..."):
-                    img_bytes = img_file.getvalue()
-                    res = process_extraction(img_bytes, rtype, is_bytes=True, mime="image/jpeg")
-
-    elif method == "🎙️ บันทึกเสียง":
-        st.markdown(
-            "<div class='info-card'>🎙️ กดปุ่มไมค์แล้วพูด เช่น <b>Grab วันนี้ 1,500 บาท</b></div>",
-            unsafe_allow_html=True,
-        )
-        audio = st.audio_input("บันทึกเสียง")
-        if audio:
-            st.audio(audio)
-            if st.button("🚀 แปลงเสียงเป็นข้อมูล", type="primary"):
-                with st.spinner("AI กำลังแปลง..."):
-                    res = process_extraction(audio.read(), rtype, is_bytes=True, mime=audio.type)
-
-    else:  # PDF
-        file = st.file_uploader("เลือกไฟล์ PDF หรือรูปภาพ", type=['pdf','jpg','png','jpeg'])
-        if file and st.button("🪄 วิเคราะห์ไฟล์", type="primary"):
-            with st.spinner("AI กำลังอ่านไฟล์..."):
-                res = process_extraction(file.read(), rtype, is_bytes=True, mime=file.type)
-
-    # ── ผลลัพธ์ ──
+        txt = st.text_area("วางข้อความรายงานที่นี่:")
+        if st.button("🪄 วิเคราะห์ด้วย AI", kind="primary"): res = process_extraction(txt, rtype)
+    else:
+        f = st.file_uploader("เลือกไฟล์", type=['pdf','jpg','png'])
+        if f and st.button("🪄 วิเคราะห์ไฟล์", kind="primary"):
+            res = process_extraction(f.read(), rtype, is_bytes=True, mime=f.type)
     if res:
         st.session_state.tmp_inc = pd.DataFrame(res)
-        st.success(f"✅ AI สกัดได้ {len(res)} รายการ")
-
-    if 'tmp_inc' in st.session_state and not st.session_state.tmp_inc.empty:
-        st.markdown("<div class='section-title'>✏️ ตรวจสอบและแก้ไขก่อนบันทึก</div>",
-                    unsafe_allow_html=True)
-        edited = st.data_editor(st.session_state.tmp_inc, use_container_width=True,
-                                num_rows="dynamic")
-        ca, cb = st.columns([1, 5])
-        with ca:
-            if st.button("💾 ยืนยันบันทึก", type="primary"):
-                target = "Monthly" if rtype == "สรุปรายเดือน" else "Income"
-                with st.spinner("กำลังบันทึก..."):
-                    if save_to_tab(edited.copy(), target):
-                        del st.session_state.tmp_inc
-                        st.success("✅ บันทึกสำเร็จ!")
-                        st.rerun()
-        with cb:
-            if st.button("🗑️ ล้างข้อมูล"):
+    if 'tmp_inc' in st.session_state:
+        ed = st.data_editor(st.session_state.tmp_inc, use_container_width=True)
+        if st.button("💾 ยืนยันบันทึก", kind="primary"):
+            if save_to_tab(ed, "Monthly" if rtype=="สรุปรายเดือน" else "Income"):
                 del st.session_state.tmp_inc
                 st.rerun()
 
-# ============================================================
-# 9. PAGE — บันทึกรายจ่าย (ตาม logic เดิม 100%)
-# ============================================================
 elif page == "💸 บันทึกรายจ่าย":
     st.markdown("<div class='page-title'>💸 บันทึกรายจ่ายวัตถุดิบ</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>สแกนบิล · บันทึกเสียง · พิมพ์เอง</div>",
-                unsafe_allow_html=True)
-
     df_exp_db = load_data("Expense")
-    ex_names  = df_exp_db['name'].unique().tolist() if not df_exp_db.empty else []
-
-    method = st.radio("เลือกวิธีบันทึก:",
-                      ["📸 ถ่ายรูปบิล", "🖼️ อัปโหลดรูปบิล", "🎙️ บันทึกด้วยเสียง", "⌨️ พิมพ์เอง"],
-                      horizontal=True)
+    ex_names = df_exp_db['name'].unique().tolist() if not df_exp_db.empty else []
+    method = st.radio("วิธีบันทึก:", ["📸 ถ่ายรูป/อัปโหลดบิล", "🎙️ บันทึกด้วยเสียง"], horizontal=True)
     res_ex = None
-
-    if method == "📸 ถ่ายรูปบิล":
-        st.markdown("<div class='info-card'>📸 ถ่ายรูปใบเสร็จ/บิลวัตถุดิบโดยตรง</div>",
-                    unsafe_allow_html=True)
-        cam = st.camera_input("สแกนบิลรายจ่าย")
-        if cam and st.button("🪄 วิเคราะห์จากรูปถ่าย", type="primary"):
-            with st.spinner("AI กำลังอ่านบิล..."):
-                res_ex = process_extraction(cam.getvalue(), "Expense",
-                                            is_bytes=True, mime="image/jpeg",
-                                            existing_names=ex_names)
-
-    elif method == "🖼️ อัปโหลดรูปบิล":
-        up = st.file_uploader("เลือกรูปบิล (JPG/PNG)", type=['jpg','png','jpeg','webp'])
-        if up:
-            st.image(up, caption="รูปบิลที่เลือก", use_container_width=True)
-            if st.button("🪄 วิเคราะห์จากไฟล์", type="primary"):
-                with st.spinner("AI กำลังอ่านบิล..."):
-                    res_ex = process_extraction(up.read(), "Expense",
-                                                is_bytes=True, mime=up.type,
-                                                existing_names=ex_names)
-
-    elif method == "🎙️ บันทึกด้วยเสียง":
-        st.markdown(
-            "<div class='info-card'>🎙️ พูดรายการที่ซื้อ เช่น <b>ไก่ 5 กิโล 400 บาท หัวหอม 1 กิโล 30 บาท</b></div>",
-            unsafe_allow_html=True,
-        )
-        audio_ex = st.audio_input("บันทึกเสียงรายจ่าย")
-        if audio_ex:
-            st.audio(audio_ex)
-            if st.button("🚀 แปลงเสียงเป็นรายการ", type="primary"):
-                with st.spinner("AI กำลังแปลง..."):
-                    res_ex = process_extraction(audio_ex.read(), "Expense",
-                                                is_bytes=True, mime=audio_ex.type,
-                                                existing_names=ex_names)
-
-    else:  # พิมพ์เอง
-        st.markdown("<div class='section-title'>กรอกรายการ</div>", unsafe_allow_html=True)
-        with st.form("manual_exp", clear_on_submit=True):
-            ca, cb, cc, cd = st.columns(4)
-            e_date  = ca.date_input("วันที่",   value=datetime.now())
-            e_name  = cb.text_input("ชื่อสินค้า")
-            e_qty   = cc.number_input("จำนวน",  min_value=0.0, step=0.5)
-            e_unit  = cd.text_input("หน่วย",    value="กก.")
-            e_price = st.number_input("ราคารวม (฿)", min_value=0.0, step=1.0)
-            if st.form_submit_button("➕ เพิ่มรายการ", type="primary"):
-                res_ex = [{"date": str(e_date), "name": e_name,
-                           "qty": e_qty, "unit": e_unit, "total_price": e_price}]
-
-    # ── ผลลัพธ์ ──
+    if method == "📸 ถ่ายรูป/อัปโหลดบิล":
+        sub = st.radio("ช่องทาง:", ["📷 ถ่ายรูปสด", "📁 เลือกไฟล์"], horizontal=True)
+        if sub == "📷 ถ่ายรูปสด":
+            img = st.camera_input("สแกนบิล")
+            if img and st.button("🪄 วิเคราะห์รูป", kind="primary"):
+                res_ex = process_extraction(img.getvalue(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=ex_names)
+        else:
+            file = st.file_uploader("เลือกรูป", type=['jpg','png','jpeg'])
+            if file and st.button("🪄 วิเคราะห์ไฟล์", kind="primary"):
+                res_ex = process_extraction(file.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=ex_names)
+    else:
+        audio = st.audio_input("พูดรายการรายจ่าย...")
+        if audio and st.button("🚀 แปลงเสียง", kind="primary"):
+            res_ex = process_extraction(audio.read(), "Expense", is_bytes=True, mime=audio.type, existing_names=ex_names)
     if res_ex:
         st.session_state.tmp_exp = pd.DataFrame(res_ex)
-        st.success(f"✅ AI สกัดได้ {len(res_ex)} รายการ")
-
-    if 'tmp_exp' in st.session_state and not st.session_state.tmp_exp.empty:
-        st.markdown("<div class='section-title'>✏️ ตรวจสอบและแก้ไขก่อนบันทึก</div>",
-                    unsafe_allow_html=True)
-        edited_ex = st.data_editor(st.session_state.tmp_exp, use_container_width=True,
-                                   num_rows="dynamic")
-        ca, cb = st.columns([1, 5])
-        with ca:
-            if st.button("💾 ยืนยันบันทึก", type="primary"):
-                with st.spinner("กำลังบันทึก..."):
-                    if save_to_tab(edited_ex.copy(), "Expense"):
-                        del st.session_state.tmp_exp
-                        st.success("✅ บันทึกสำเร็จ!")
-                        st.rerun()
-        with cb:
-            if st.button("🗑️ ล้างข้อมูล"):
+    if 'tmp_exp' in st.session_state:
+        ed_ex = st.data_editor(st.session_state.tmp_exp, use_container_width=True)
+        if st.button("💾 ยืนยันบันทึกรายจ่าย", kind="primary"):
+            if save_to_tab(ed_ex, "Expense"):
                 del st.session_state.tmp_exp
                 st.rerun()
 
-# ============================================================
-# 10. PAGE — AI Agent
-# ============================================================
 elif page == "🤖 AI Agent":
     st.markdown("<div class='page-title'>🤖 AI ที่ปรึกษาธุรกิจ</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>วิเคราะห์ข้อมูล · แนะนำกลยุทธ์ · ตอบคำถามธุรกิจ</div>",
-                unsafe_allow_html=True)
-
-    # Quick prompts
-    st.markdown("**💡 กดถามได้เลย:**")
-    qc = st.columns(3)
-    qs = [
-        "สรุปภาพรวมธุรกิจให้หน่อย",
-        "แอปไหนให้ยอดดีที่สุด?",
-        "วัตถุดิบไหนราคาพุ่งมากสุด?",
-        "ควรปรับราคาเมนูไหมตอนนี้?",
-        "เดือนไหนรายรับสูงสุด?",
-        "ต้นทุนที่ควรลดคืออะไร?",
-    ]
-    for i, q in enumerate(qs):
-        with qc[i % 3]:
-            if st.button(q, key=f"qb_{i}"):
-                st.session_state.ai_q = q
-
-    st.divider()
-
-    if "ai_msgs" not in st.session_state:
-        st.session_state.ai_msgs = []
-
-    for msg in st.session_state.ai_msgs:
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
-
-    user_q = st.chat_input("ถามเรื่องธุรกิจร้านเนฟ...")
-    if "ai_q" in st.session_state:
-        user_q = st.session_state.pop("ai_q")
-
-    if user_q and client:
-        st.session_state.ai_msgs.append({"role": "user", "content": user_q})
-        with st.chat_message("user"):
-            st.write(user_q)
-
-        df_i = load_data("Income")
-        df_e = load_data("Expense")
-        df_m = load_data("Monthly")
-        ctx  = (f"[Income]\n{df_i.tail(10).to_csv(index=False)}\n"
-                f"[Monthly]\n{df_m.tail(6).to_csv(index=False)}\n"
-                f"[Expense]\n{df_e.tail(10).to_csv(index=False)}")
-        full = (f"คุณคือที่ปรึกษาธุรกิจร้านอาหาร ตอบภาษาไทย กระชับ ใช้ตัวเลขจริง\n\n"
-                f"{ctx}\n\nคำถาม: {user_q}")
-
+    q = st.chat_input("ปรึกษาเรื่องธุรกิจ...")
+    if q:
+        df_i, df_e, df_m = load_data("Income"), load_data("Expense"), load_data("Monthly")
+        ctx = f"Income Daily: {df_i.tail(5).to_csv()}\\nMonthly: {df_m.tail(3).to_csv()}"
         with st.chat_message("assistant"):
-            with st.spinner("กำลังวิเคราะห์..."):
-                try:
-                    resp = client.models.generate_content(
-                        model="models/gemini-3.1-flash-lite-preview",
-                        contents=[full],
-                    )
-                    reply = resp.text
-                    st.write(reply)
-                    st.session_state.ai_msgs.append({"role": "assistant", "content": reply})
-                except Exception as e:
-                    st.error(f"AI Error: {e}")
+            if client:
+                res = client.models.generate_content(model="models/gemini-2.0-flash", contents=[f"วิเคราะห์ข้อมูลร้าน Nave 304:\\n{ctx}\\nคำถาม: {q}"])
+                st.write(res.text)
+            else: st.error("AI ไม่พร้อมใช้งาน")
 
-    if st.session_state.get("ai_msgs") and st.button("🗑️ ล้างประวัติ"):
-        st.session_state.ai_msgs = []
-        st.rerun()
-
-# ============================================================
-# 11. PAGE — ข้อมูลทั้งหมด
-# ============================================================
 elif page == "📋 ข้อมูลทั้งหมด":
-    st.markdown("<div class='page-title'>📋 ข้อมูลดิบใน Google Sheets</div>", unsafe_allow_html=True)
-
-    t1, t2, t3 = st.tabs(["📥 Income (รายวัน)", "📊 Monthly (รายเดือน)", "📤 Expense (รายจ่าย)"])
-    with t1:
-        df = load_data("Income")
-        st.caption(f"{len(df)} แถว")
-        st.dataframe(df, use_container_width=True)
-    with t2:
-        df = load_data("Monthly")
-        st.caption(f"{len(df)} แถว")
-        st.dataframe(df, use_container_width=True)
-    with t3:
-        df = load_data("Expense")
-        st.caption(f"{len(df)} แถว")
-        st.dataframe(df, use_container_width=True)
+    st.markdown("<div class='page-title'>📋 ข้อมูลดิบแยกแท็บ</div>", unsafe_allow_html=True)
+    t1, t2, t3 = st.tabs(["รายรับ", "รายจ่าย", "สรุปรายเดือน"])
+    with t1: st.dataframe(load_data("Income"), use_container_width=True)
+    with t2: st.dataframe(load_data("Expense"), use_container_width=True)
+    with t3: st.dataframe(load_data("Monthly"), use_container_width=True)
