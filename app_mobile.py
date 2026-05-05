@@ -91,24 +91,39 @@ def process_extraction(data, p_type, is_bytes=False, mime=None):
 def save_to_tab(df, tab):
     if conn is None or df.empty: return False
     try:
+        # 1. โหลดข้อมูลปัจจุบันจากชีต (เอาสดๆ มาเช็ก)
+        existing = load_data(tab)
+        
         if tab == "Income":
             df['type'] = 'Income'
-            if 'app' not in df.columns: df['app'] = 'หน้าร้าน'
-            if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
-        elif tab == "Expense":
-            df['type'] = 'Expense'
-            if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
-        elif tab == "Monthly":
-            df['type'] = 'Monthly'
-            if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
-
-        existing = load_data(tab)
+            # บังคับมาตรฐานชื่อแอป
+            df['app'] = df['app'].apply(lambda x: "GrabFood" if "grab" in str(x).lower() 
+                                       else ("LINE MAN" if "line" in str(x).lower() 
+                                       else ("ShopeeFood" if "shopee" in str(x).lower() else x)))
+        
+        # 2. รวมข้อมูล
         final = pd.concat([existing, df], ignore_index=True)
+
+        # 3. กำจัดตัวซ้ำ (หัวใจสำคัญ)
+        if tab == "Income":
+            # แปลงวันที่เป็น String format เดียวกัน และปัดเศษเงินโอนให้เท่ากัน
+            final['date'] = pd.to_datetime(final['date']).dt.strftime('%Y-%m-%d')
+            final['net_income'] = clean_numeric(final, 'net_income').round(2)
+            # เช็กซ้ำ 3 จุด: วันที่, แอป, ยอดเงิน
+            final = final.drop_duplicates(subset=['date', 'app', 'net_income'], keep='first')
+            # เรียงใหม่ให้ของล่าสุดอยู่บนสุดเสมอ
+            final = final.sort_values(by='date', ascending=False)
+        
+        elif tab == "Expense":
+            final = final.drop_duplicates(subset=['date', 'name', 'total_price'], keep='first')
+            final = final.sort_values(by='date', ascending=False)
+
+        # 4. อัปเดตกลับเข้า Google Sheets
         conn.update(worksheet=tab, data=final)
-        refresh_all_caches()
+        st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"❌ บันทึกล้มเหลว: {e}")
+        st.error(f"❌ ระบบบันทึกขัดข้อง: {e}")
         return False
 
 # --- 4. UI Layout ---
