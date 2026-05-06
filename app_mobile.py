@@ -125,6 +125,35 @@ section[data-testid="stSidebar"] > div:first-child {
 }
 .page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin-bottom: 0.1rem; }
 .page-sub   { font-size: 0.875rem; color: #6b7280; margin-bottom: 1rem; }
+
+/* ── Mobile: ซ่อน sidebar ── */
+@media (max-width: 768px) {
+    section[data-testid="stSidebar"] { display: none !important; }
+    [data-testid="collapsedControl"] { display: none !important; }
+    .block-container { padding: 0.5rem 0.6rem 80px !important; }
+    [data-testid="stMetricValue"] { font-size: 1.1rem !important; }
+    [data-testid="stMetric"] { padding: 0.7rem 0.8rem !important; }
+}
+
+/* ── Mobile bottom nav bar ── */
+.mobile-nav {
+    display: none;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+    background: linear-gradient(90deg,#0d3d26,#1a6b4a);
+    padding: 6px 0 env(safe-area-inset-bottom, 8px);
+    box-shadow: 0 -2px 16px rgba(0,0,0,0.3);
+}
+.mobile-nav-inner { display: flex; justify-content: space-around; }
+.mnav-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    color: rgba(255,255,255,0.6); font-size: 9px; font-weight: 500;
+    background: none; border: none; cursor: pointer;
+    padding: 5px 4px; border-radius: 8px; min-width: 44px;
+    font-family: 'IBM Plex Sans Thai', sans-serif; transition: all 0.15s;
+}
+.mnav-btn.active { color: #fff; background: rgba(255,255,255,0.18); }
+.mnav-icon { font-size: 20px; line-height: 1.2; }
+@media (max-width: 768px) { .mobile-nav { display: block; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -250,41 +279,62 @@ def save_to_tab(df, tab):
 
 
 # ============================================================
-# 4. SIDEBAR
+# 4. NAVIGATION — Desktop: sidebar / Mobile: bottom nav bar
 # ============================================================
+
+PAGES = [
+    ("📊", "Dashboard",  "📊 Dashboard รายวัน"),
+    ("📈", "รายเดือน",   "📈 วิเคราะห์รายเดือน"),
+    ("💰", "รายรับ",     "💰 บันทึกรายรับ"),
+    ("💸", "รายจ่าย",    "💸 บันทึกรายจ่าย"),
+    ("🤖", "AI",         "🤖 AI Agent"),
+    ("📋", "ข้อมูล",     "📋 ข้อมูลทั้งหมด"),
+]
+PAGE_KEYS = [p[2] for p in PAGES]
+
+# Desktop sidebar
 st.sidebar.title("🍜 Nave 304 Master")
 st.sidebar.divider()
-
-page = st.sidebar.radio(
-    "เลือกเมนู:",
-    [
-        "📊 Dashboard รายวัน",
-        "📈 วิเคราะห์รายเดือน",
-        "💰 บันทึกรายรับ",
-        "💸 บันทึกรายจ่าย",
-        "🤖 AI Agent",
-        "📋 ข้อมูลทั้งหมด",
-    ],
-)
-
+page = st.sidebar.radio("เลือกเมนู:", PAGE_KEYS)
 st.sidebar.divider()
 
-# ── Break-even settings (ใช้ expander object API — ไม่พัง sidebar) ──
+# Break-even settings
 st.session_state.setdefault("be_rent",     4000)
 st.session_state.setdefault("be_electric",  800)
 st.session_state.setdefault("be_water",     400)
 st.session_state.setdefault("be_other",       0)
-
 _exp = st.sidebar.expander("⚙️ ตั้งค่า Break-even/เดือน")
-st.session_state["be_rent"]     = _exp.number_input("🏠 ค่าเช่า (฿)",      value=st.session_state["be_rent"],     step=500, min_value=0)
-st.session_state["be_electric"] = _exp.number_input("💡 ค่าไฟ (฿)",        value=st.session_state["be_electric"], step=100, min_value=0)
-st.session_state["be_water"]    = _exp.number_input("🚿 ค่าน้ำ (฿)",       value=st.session_state["be_water"],    step=100, min_value=0)
-st.session_state["be_other"]    = _exp.number_input("📦 อื่นๆ (฿)",         value=st.session_state["be_other"],    step=100, min_value=0)
-
+st.session_state["be_rent"]     = _exp.number_input("🏠 ค่าเช่า (฿)",  value=st.session_state["be_rent"],     step=500, min_value=0)
+st.session_state["be_electric"] = _exp.number_input("💡 ค่าไฟ (฿)",   value=st.session_state["be_electric"], step=100, min_value=0)
+st.session_state["be_water"]    = _exp.number_input("🚿 ค่าน้ำ (฿)",  value=st.session_state["be_water"],    step=100, min_value=0)
+st.session_state["be_other"]    = _exp.number_input("📦 อื่นๆ (฿)",   value=st.session_state["be_other"],    step=100, min_value=0)
 st.sidebar.divider()
 if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
     refresh_all_caches()
     st.rerun()
+
+# Mobile bottom nav bar
+active_idx = PAGE_KEYS.index(page) if page in PAGE_KEYS else 0
+nav_html = '<div class="mobile-nav"><div class="mobile-nav-inner">'
+for i, (icon, label, key) in enumerate(PAGES):
+    cls = "mnav-btn active" if i == active_idx else "mnav-btn"
+    nav_html += (
+        f'<button class="{cls}" onclick="window.parent.location.href='
+        + "'" + f'?nav={i}' + "'" + f'">'
+        f'<span class="mnav-icon">{icon}</span>{label}</button>'
+    )
+nav_html += '</div></div>'
+st.markdown(nav_html, unsafe_allow_html=True)
+
+# รับ nav param จาก URL (มือถือกดปุ่มด้านล่าง)
+_params = st.query_params
+if "nav" in _params:
+    try:
+        _nav_i = int(_params["nav"])
+        if 0 <= _nav_i < len(PAGE_KEYS):
+            page = PAGE_KEYS[_nav_i]
+    except:
+        pass
 
 
 # ============================================================
