@@ -326,65 +326,70 @@ if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
     refresh_all_caches()
     st.rerun()
 
-# Mobile nav — pure HTML anchor horizontal bar
+# Mobile nav — ใช้ st.components iframe + postMessage
 st.session_state.setdefault("mobile_page", None)
 _mi = st.session_state.get("mobile_page")
 if _mi is not None and 0 <= _mi < len(PAGE_KEYS):
     page = PAGE_KEYS[_mi]
 
-_NAV_CSS = """<style>
+import streamlit.components.v1 as _components
+
+_cur = st.session_state.get("mobile_page") or 0
+_labels = [(icon, label) for icon, label, key in PAGES]
+
+_btn_html = ""
+for _i, (_icon, _label) in enumerate(_labels):
+    _active = "on" if _i == _cur else ""
+    _btn_html += (
+        f'<button class="nb {_active}" onclick="send({_i})">'
+        f'{_icon} {_label}</button>'
+    )
+
+_iframe_html = """
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Sarabun',sans-serif}
+body{
+  background:linear-gradient(90deg,#0d3d26,#1a6b4a);
+  padding:8px 6px;overflow-x:auto;white-space:nowrap;
+  scrollbar-width:none;height:48px;display:flex;align-items:center;
+}
+body::-webkit-scrollbar{display:none}
+.nb{
+  display:inline-block;
+  background:rgba(255,255,255,.12);
+  color:rgba(255,255,255,.8);
+  border:1px solid rgba(255,255,255,.22);
+  border-radius:20px;
+  font-size:13px;font-weight:500;
+  padding:5px 14px;margin-right:4px;
+  cursor:pointer;white-space:nowrap;
+}
+.nb.on{background:rgba(255,255,255,.26);color:#fff;border-color:rgba(255,255,255,.45)}
+</style>
+""" + _btn_html + """
+<script>
+function send(i){
+  window.parent.postMessage({type:"streamlit:setComponentValue",value:i},"*")
+}
+</script>
+"""
+
+_nav_val = _components.html(_iframe_html, height=56, scrolling=False)
+
+if _nav_val is not None and isinstance(_nav_val, (int, float)):
+    _pi = int(_nav_val)
+    if 0 <= _pi < len(PAGE_KEYS) and st.session_state.get("mobile_page") != _pi:
+        st.session_state["mobile_page"] = _pi
+        st.rerun()
+
+# CSS: ซ่อน sidebar บน mobile
+st.markdown("""<style>
 @media(max-width:768px){
   section[data-testid="stSidebar"]{display:none!important}
   [data-testid="collapsedControl"]{display:none!important}
-  .block-container{padding-top:68px!important}
+  .block-container{padding-top:4px!important}
 }
-.mnb{
-  display:none;
-  position:fixed;top:0;left:0;right:0;z-index:9999;
-  background:linear-gradient(90deg,#0d3d26,#1a6b4a);
-  padding:8px;
-  box-shadow:0 2px 10px rgba(0,0,0,.4);
-  overflow-x:auto;white-space:nowrap;
-  -webkit-overflow-scrolling:touch;scrollbar-width:none;
-}
-.mnb::-webkit-scrollbar{display:none}
-.mnb a{
-  display:inline-block;
-  color:rgba(255,255,255,.75);
-  font-size:13px;font-weight:500;
-  padding:5px 14px;margin-right:4px;
-  border-radius:20px;
-  border:1px solid rgba(255,255,255,.2);
-  text-decoration:none;
-}
-.mnb a.on{
-  background:rgba(255,255,255,.22);
-  color:#fff;
-  border-color:rgba(255,255,255,.4);
-}
-@media(max-width:768px){.mnb{display:block}}
-</style>"""
-st.markdown(_NAV_CSS, unsafe_allow_html=True)
-
-_cur = st.session_state.get("mobile_page") or 0
-_nav_items = ""
-for _i, (_icon, _label, _key) in enumerate(PAGES):
-    _cls = "on" if _i == _cur else ""
-    _nav_items += f'<a href="?p={_i}" class="{_cls}">{_icon} {_label}</a>'
-st.markdown(f'<div class="mnb">{_nav_items}</div>', unsafe_allow_html=True)
-
-_qp = st.query_params
-if "p" in _qp:
-    try:
-        _pi = int(_qp["p"])
-        if 0 <= _pi < len(PAGE_KEYS):
-            if st.session_state.get("mobile_page") != _pi:
-                st.session_state["mobile_page"] = _pi
-                st.query_params.clear()
-                st.rerun()
-            page = PAGE_KEYS[_pi]
-    except:
-        pass
+</style>""", unsafe_allow_html=True)
 
 
 # ============================================================
