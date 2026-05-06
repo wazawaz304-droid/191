@@ -326,44 +326,64 @@ if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
     refresh_all_caches()
     st.rerun()
 
-# ── Mobile nav — ใช้ session_state ทำงานได้จริงบนมือถือ ──
+# ── Mobile nav bar — session_state based, ทำงานได้จริง ──
 st.session_state.setdefault("mobile_page", None)
 
-# CSS สำหรับปุ่ม mobile nav (แสดงเฉพาะมือถือ)
+# CSS: target data-testid="stHorizontalBlock" แถวแรกของหน้า
+#      ซึ่งเป็น st.columns ที่ Streamlit render จริงๆ
 mob_css = (
     "<style>"
-    ".mob-nav-row { display:none }"
+    # แถบพื้นหลังสีเขียวคลุมทั้งแถว
     "@media(max-width:768px){"
-    ".mob-nav-row{"
-    "display:flex;gap:4px;overflow-x:auto;padding:4px 0 10px;"
-    "margin-bottom:0.5rem;-webkit-overflow-scrolling:touch;"
+    # ซ่อน sidebar
+    "section[data-testid='stSidebar']{display:none!important}"
+    "[data-testid='collapsedControl']{display:none!important}"
+    # เพิ่ม padding ด้านบนให้ content ไม่ทับ nav
+    ".block-container{padding-top:70px!important}"
+    # แถบ nav — target element แรกของ block-container
+    ".nav-bar-wrap{"
     "position:fixed;top:0;left:0;right:0;z-index:9999;"
     "background:linear-gradient(90deg,#0d3d26,#1a6b4a);"
-    "padding:8px 8px env(safe-area-inset-top,4px);box-shadow:0 2px 12px rgba(0,0,0,.3)}"
-    ".mob-nav-row .stButton{flex-shrink:0}"
-    ".mob-nav-row .stButton>button{"
-    "background:rgba(255,255,255,.12)!important;color:#fff!important;"
-    "border:1px solid rgba(255,255,255,.25)!important;"
-    "border-radius:20px!important;font-size:12px!important;"
-    "padding:5px 12px!important;white-space:nowrap!important;"
+    "padding:8px 6px;"
+    "box-shadow:0 2px 10px rgba(0,0,0,.35);"
+    "display:flex;gap:4px;overflow-x:auto;"
+    "-webkit-overflow-scrolling:touch;"
+    "scrollbar-width:none}"
+    ".nav-bar-wrap::-webkit-scrollbar{display:none}"
+    # ปุ่มแต่ละเมนู
+    ".nav-bar-wrap .stButton{flex-shrink:0!important;min-width:fit-content}"
+    ".nav-bar-wrap .stButton>button{"
+    "background:rgba(255,255,255,.13)!important;"
+    "color:#fff!important;"
+    "border:1px solid rgba(255,255,255,.28)!important;"
+    "border-radius:20px!important;"
+    "font-size:12px!important;"
+    "padding:5px 14px!important;"
+    "white-space:nowrap!important;"
+    "height:auto!important;"
+    "line-height:1.4!important;"
     "font-family:'IBM Plex Sans Thai',sans-serif!important}"
-    ".mob-nav-row .stButton>button:hover{"
-    "background:rgba(255,255,255,.25)!important}"
+    ".nav-bar-wrap .stButton>button:hover{"
+    "background:rgba(255,255,255,.26)!important}"
     "}"
+    # desktop: ซ่อน nav bar
+    "@media(min-width:769px){.nav-bar-wrap{display:none!important}}"
     "</style>"
 )
 st.markdown(mob_css, unsafe_allow_html=True)
 
-st.markdown('<div class="mob-nav-row">', unsafe_allow_html=True)
-nav_cols = st.columns(len(PAGES))
-for i, (icon, label, key) in enumerate(PAGES):
-    with nav_cols[i]:
-        if st.button(f"{icon} {label}", key=f"mnav_{i}"):
-            st.session_state["mobile_page"] = i
+# render nav bar
+st.markdown('<div class="nav-bar-wrap">', unsafe_allow_html=True)
+_nav_cols = st.columns(len(PAGES))
+for _i, (_icon, _label, _key) in enumerate(PAGES):
+    with _nav_cols[_i]:
+        if st.button(f"{_icon} {_label}", key=f"mnav_{_i}",
+                     use_container_width=False):
+            st.session_state["mobile_page"] = _i
             st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
-# override page ถ้ากดจากมือถือ
+# override page ถ้ากดจาก mobile nav
 _mi = st.session_state.get("mobile_page")
 if _mi is not None and 0 <= _mi < len(PAGE_KEYS):
     page = PAGE_KEYS[_mi]
