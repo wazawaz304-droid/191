@@ -100,15 +100,7 @@ section[data-testid="stSidebar"] > div:first-child {
 .stButton > button[kind="primary"] { background: linear-gradient(135deg,#1a6b4a,#2e8b62) !important; color: white !important; border: none !important; box-shadow: 0 4px 12px rgba(26, 107, 74, 0.2); }
 .stButton > button:hover { transform: translateY(-1px); }
 
-@media (max-width: 768px) {
-    .block-container { padding: 1rem; }
-    .page-title { font-size: 1.5rem; }
-}
-/* ========================================= */
 /* แก้ไขสีพื้นหลัง Expander, Input, Button ใน Sidebar */
-/* ========================================= */
-
-/* 1. กล่องตั้งค่า Break-even (Expander) */
 [data-testid="stSidebar"] [data-testid="stExpander"] details, 
 [data-testid="stSidebar"] [data-testid="stExpander"] summary {
     background-color: transparent !important;
@@ -118,23 +110,19 @@ section[data-testid="stSidebar"] > div:first-child {
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.15);
 }
-
-/* 2. ช่องกรอกตัวเลข (Input) ให้พื้นหลังเข้มและตัวหนังสือขาว */
 [data-testid="stSidebar"] div[data-baseweb="input"] {
-    background-color: rgba(0, 0, 0, 0.25) !important; /* พื้นหลังกล่องเป็นสีดำโปร่งแสง */
+    background-color: rgba(0, 0, 0, 0.25) !important; 
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
     border-radius: 8px !important;
 }
 [data-testid="stSidebar"] div[data-baseweb="input"] > div {
-    background-color: transparent !important; /* ลบพื้นหลังสีขาวส่วนเกินของ Streamlit */
+    background-color: transparent !important; 
 }
 [data-testid="stSidebar"] input {
-    color: #ffffff !important; /* สีตัวหนังสือที่พิมพ์เป็นสีขาว */
-    background-color: transparent !important; /* ให้ทะลุเห็นสีดำด้านหลัง */
-    -webkit-text-fill-color: #ffffff !important; /* บังคับสีให้แสดงผลถูกทุกเบราว์เซอร์ */
+    color: #ffffff !important; 
+    background-color: transparent !important; 
+    -webkit-text-fill-color: #ffffff !important; 
 }
-
-/* 3. ปุ่มรีเฟรชข้อมูล (Button) */
 [data-testid="stSidebar"] .stButton > button {
     background-color: rgba(255, 255, 255, 0.15) !important;
     color: #ffffff !important;
@@ -142,6 +130,11 @@ section[data-testid="stSidebar"] > div:first-child {
 }
 [data-testid="stSidebar"] .stButton > button:hover {
     background-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+@media (max-width: 768px) {
+    .block-container { padding: 1rem; }
+    .page-title { font-size: 1.5rem; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -170,7 +163,6 @@ def load_data(sheet_name):
     try:
         df = conn.read(worksheet=sheet_name, ttl=0)
         if df is not None:
-            # แปลงชื่อคอลัมน์เป็นตัวพิมพ์เล็กทั้งหมดเพื่อแก้ KeyError
             df.columns = [str(c).strip().lower() for c in df.columns]
             return df.dropna(how='all')
         return pd.DataFrame()
@@ -191,10 +183,8 @@ def save_to_tab(df, tab):
     try:
         existing = load_data(tab)
         
-        # จัดการประเภทข้อมูล 11 คอลัมน์ (สำหรับ Income)
         if tab.lower() == "income":
             df['type'] = 'Income'
-            # บังคับมาตรฐานชื่อแอป
             df['app'] = df['app'].apply(lambda x: "GrabFood" if "grab" in str(x).lower() 
                                        else ("LINE MAN" if "line" in str(x).lower() 
                                        else ("ShopeeFood" if "shopee" in str(x).lower() else x)))
@@ -205,31 +195,26 @@ def save_to_tab(df, tab):
             if 'total_price' not in df.columns: df['total_price'] = df['net_income']
             if 'unit_price' not in df.columns: df['unit_price'] = df['net_income']
             
-            # เรียงคอลัมน์ให้เป๊ะตาม Google Sheets
             cols_order = ['name', 'qty', 'unit', 'total_price', 'date', 'unit_price', 'app', 'net_income', 'gross_sales', 'gp_amount', 'type']
             for col in cols_order:
                 if col not in df.columns: df[col] = ""
             df = df[cols_order]
 
-        # จัดการสำหรับ Expense
         elif tab.lower() == "expense":
             df['type'] = 'Expense'
             df['unit_price'] = clean_numeric(df, 'total_price') / clean_numeric(df, 'qty').replace(0, 1)
 
-        # รวมข้อมูลเดิมและข้อมูลใหม่
         final = pd.concat([existing, df], ignore_index=True)
 
-        # กรองข้อมูลซ้ำ
         if tab.lower() == "income":
             final['date'] = pd.to_datetime(final['date']).dt.strftime('%Y-%m-%d')
             final['net_income'] = pd.to_numeric(final['net_income']).round(2)
             final = final.drop_duplicates(subset=['date', 'app', 'net_income'], keep='first')
-            final = final.sort_values(by='date', ascending=True) # ต่อท้ายตาราง
+            final = final.sort_values(by='date', ascending=True) 
         elif tab.lower() == "expense":
             final = final.drop_duplicates(subset=['date', 'name', 'total_price'], keep='first')
             final = final.sort_values(by='date', ascending=True)
 
-        # บันทึกกลับลง Google Sheets (ต้องใช้ชื่อแท็บตามจริงคือ Income, Expense, Monthly)
         target_sheet = "Income" if tab.lower() == "income" else ("Expense" if tab.lower() == "expense" else tab)
         conn.update(worksheet=target_sheet, data=final)
         st.cache_data.clear()
@@ -268,7 +253,6 @@ def process_extraction(data, p_type, is_bytes=False, mime=None, existing_names=N
             res = client.models.generate_content(model=model_name, contents=[prompt, data])
 
         text = res.text.strip()
-        # Safe JSON extraction
         start = text.find('[')
         end = text.rfind(']') + 1
         if start != -1 and end != 0:
@@ -292,17 +276,6 @@ with st.sidebar:
 
     st.divider()
     
-    st.session_state.setdefault("be_rent", 4000)
-    st.session_state.setdefault("be_electric", 800)
-    st.session_state.setdefault("be_water", 400)
-    st.session_state.setdefault("be_other", 0)
-
-    _be_exp = st.expander("⚙️ ตั้งค่า Break-even (ต้นทุนคงที่)")
-    st.session_state["be_rent"] = _be_exp.number_input("🏠 ค่าเช่า/เดือน (฿)", value=st.session_state["be_rent"], step=500, min_value=0)
-    st.session_state["be_electric"] = _be_exp.number_input("💡 ค่าไฟ/เดือน (฿)", value=st.session_state["be_electric"], step=100, min_value=0)
-    st.session_state["be_water"] = _be_exp.number_input("🚿 ค่าน้ำ/เดือน (฿)", value=st.session_state["be_water"], step=100, min_value=0)
-    st.session_state["be_other"] = _be_exp.number_input("📦 อื่นๆ/เดือน (฿)", value=st.session_state["be_other"], step=100, min_value=0)
-
     if st.button("🔄 รีเฟรชข้อมูล", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
@@ -333,60 +306,18 @@ if page == "📊 Dashboard รายวัน":
     t_exp = df_e['total_price'].sum() if not df_e.empty and 'total_price' in df_e.columns else 0
     profit = t_inc - t_exp
 
-    # Break-even Calculation
-    be_rent = st.session_state.get("be_rent", 4000)
-    be_electric = st.session_state.get("be_electric", 800)
-    be_water = st.session_state.get("be_water", 400)
-    be_other = st.session_state.get("be_other", 0)
-    fixed_monthly = be_rent + be_electric + be_water + be_other
-    days_in_month = 26
-    fixed_daily = fixed_monthly / days_in_month
-    food_cost_pct = (t_exp / t_inc * 100) if t_inc > 0 else 0
-    contribution_margin = 1 - (food_cost_pct / 100)
-    be_daily = (fixed_daily / contribution_margin) if contribution_margin > 0 else 0
-
+    # คำนวณรายรับเฉพาะวันนี้
     today = pd.Timestamp.now().normalize()
     today_inc = 0
     if not df_i.empty and "date" in df_i.columns:
         today_inc = df_i[df_i["date"] >= today]["net_income"].sum()
 
-    passed_be = today_inc >= be_daily and be_daily > 0
-    gap = be_daily - today_inc
-
-    # Status Banner
-    if be_daily > 0:
-        if passed_be:
-            surplus = today_inc - be_daily
-            st.markdown(
-                f"<div class='status-card success-card'><span style='font-size:1.8rem'>🎯</span>"
-                f"<div><b>ผ่าน Break-even แล้ว!</b><br>วันนี้รายรับ ฿{today_inc:,.0f} — เกินเป้าหมาย ฿{be_daily:,.0f} อยู่ <b>฿{surplus:,.0f}</b> ยอดเยี่ยมมาก!</div></div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f"<div class='status-card warn-card'><span style='font-size:1.8rem'>⏳</span>"
-                f"<div><b>สู้ๆ ยังไม่ถึง Break-even!</b><br>วันนี้รายรับ ฿{today_inc:,.0f} — ต้องขายเพิ่มอีก <b>฿{gap:,.0f}</b> ถึงจะคุ้มทุน (เป้า: ฿{be_daily:,.0f})</div></div>",
-                unsafe_allow_html=True,
-            )
-
     # KPI 4 ช่อง
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💰 รายรับรวม (ทั้งชีต)", f"฿{t_inc:,.0f}")
-    c2.metric("📦 รายจ่ายรวม (ทั้งชีต)", f"฿{t_exp:,.0f}")
-    c3.metric("⚖️ กำไรขั้นต้น", f"฿{profit:,.0f}", delta=f"{profit/t_inc*100:.1f}% margin" if t_inc > 0 else None)
-    c4.metric("🎯 Break-even/วัน", f"฿{be_daily:,.0f}" if be_daily > 0 else "ตั้งค่าก่อน", 
-              delta="ผ่านแล้ว ✅" if passed_be else (f"ขาดอีก ฿{gap:,.0f}" if be_daily > 0 else None),
-              delta_color="normal" if passed_be else "inverse")
-
-    st.markdown("<div class='section-title'>📊 ต้นทุนคงที่ & Break-even วันนี้</div>", unsafe_allow_html=True)
-    be1, be2, be3, be4, be5 = st.columns(5)
-    be1.metric("🏠 ค่าเช่า/วัน", f"฿{be_rent/days_in_month:,.0f}")
-    be2.metric("💡 ค่าไฟ/วัน", f"฿{be_electric/days_in_month:,.0f}")
-    be3.metric("🚿 ค่าน้ำ/วัน", f"฿{be_water/days_in_month:,.0f}")
-    be4.metric("📦 อื่นๆ/วัน", f"฿{be_other/days_in_month:,.0f}")
-    be5.metric("📉 Food Cost %", f"{food_cost_pct:.1f}%", 
-               delta="เกิน 35%! ⚠️" if food_cost_pct > 35 else "ปกติ ✅",
-               delta_color="inverse" if food_cost_pct > 35 else "normal")
+    c1.metric("💰 รายรับรวม", f"฿{t_inc:,.0f}")
+    c2.metric("📦 รายจ่ายรวม", f"฿{t_exp:,.0f}")
+    c3.metric("⚖️ กำไรขั้นต้น (รวม)", f"฿{profit:,.0f}", delta=f"{profit/t_inc*100:.1f}% margin" if t_inc > 0 else None)
+    c4.metric("🔥 รายรับวันนี้", f"฿{today_inc:,.0f}")
 
     st.divider()
 
