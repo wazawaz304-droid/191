@@ -126,33 +126,46 @@ section[data-testid="stSidebar"] > div:first-child {
 .page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin-bottom: 0.1rem; }
 .page-sub   { font-size: 0.875rem; color: #6b7280; margin-bottom: 1rem; }
 
-/* ── Mobile: ซ่อน sidebar ── */
+/* ── Mobile: ซ่อน sidebar + เว้นที่ด้านบนให้ top nav ── */
 @media (max-width: 768px) {
     section[data-testid="stSidebar"] { display: none !important; }
-    [data-testid="collapsedControl"] { display: none !important; }
-    .block-container { padding: 0.5rem 0.6rem 80px !important; }
+    [data-testid="collapsedControl"]  { display: none !important; }
+    .block-container { padding: 70px 0.6rem 2rem !important; }
     [data-testid="stMetricValue"] { font-size: 1.1rem !important; }
     [data-testid="stMetric"] { padding: 0.7rem 0.8rem !important; }
 }
 
-/* ── Mobile bottom nav bar ── */
+/* ── Mobile top nav bar ── */
 .mobile-nav {
     display: none;
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
-    background: linear-gradient(90deg,#0d3d26,#1a6b4a);
-    padding: 6px 0 env(safe-area-inset-bottom, 8px);
-    box-shadow: 0 -2px 16px rgba(0,0,0,0.3);
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: linear-gradient(90deg, #0d3d26, #1a6b4a);
+    padding: 8px 4px env(safe-area-inset-top, 4px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
-.mobile-nav-inner { display: flex; justify-content: space-around; }
+.mobile-nav-inner {
+    display: flex;
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: max-content;
+    padding: 0 4px;
+}
 .mnav-btn {
-    display: flex; flex-direction: column; align-items: center; gap: 1px;
-    color: rgba(255,255,255,0.6); font-size: 9px; font-weight: 500;
+    display: flex; flex-direction: row; align-items: center; gap: 5px;
+    color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 500;
     background: none; border: none; cursor: pointer;
-    padding: 5px 4px; border-radius: 8px; min-width: 44px;
+    padding: 6px 12px; border-radius: 20px; white-space: nowrap;
     font-family: 'IBM Plex Sans Thai', sans-serif; transition: all 0.15s;
+    border: 1px solid transparent;
 }
-.mnav-btn.active { color: #fff; background: rgba(255,255,255,0.18); }
-.mnav-icon { font-size: 20px; line-height: 1.2; }
+.mnav-btn.active {
+    color: #fff;
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,255,255,0.3);
+}
+.mnav-icon { font-size: 15px; line-height: 1; }
 @media (max-width: 768px) { .mobile-nav { display: block; } }
 </style>
 """, unsafe_allow_html=True)
