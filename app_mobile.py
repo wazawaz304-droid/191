@@ -78,7 +78,7 @@ def process_extraction(data, p_type, is_bytes=False, mime=None):
     elif p_type == "สรุปรายเดือน":
         p = "สกัดรายงานรายเดือนเป็น JSON: [{'month_year': 'YYYY-MM', 'platform': 'แอป', 'gross': 0, 'fees': 0, 'ads': 0, 'discounts': 0, 'net_income': 0}]"
     else:
-        p = f"สกัดรายได้เดลิเวอรี่รายวันเป็น JSON: [{{'date': '{now_str}', 'app': 'ชื่อแอป', 'net_income': ยอดโอน}}]. วันนี้คือวันที่ {now_str}"
+        p = f"สกัดรายได้เดลิเวอรี่รายวันเป็น JSON: [{{'date': '{now_str}', 'app': 'ชื่อแอป', 'net_income': ยอดที่จะโอนออกให้ร้าน}}]. วันนี้คือวันที่ {now_str}"
     
     prompt = p + " ตอบเฉพาะ PURE JSON เท่านั้น"
     if is_bytes:
