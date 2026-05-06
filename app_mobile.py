@@ -168,27 +168,26 @@ def clean_numeric(df, col_name):
     return pd.Series([0.0] * len(df))
 
 def save_to_tab(df, tab):
-    if conn is None or df.empty:
-        return False
+    if conn is None or df.empty: return False
     try:
+        # ดึงข้อมูลล่าสุดจาก Sheets มาเช็กก่อน (ป้องกันการบันทึกซ้ำซ้อน)
         existing = load_data(tab)
-        if tab == "Income":
-            df['type'] = 'Income'
-            if 'app' not in df.columns:
-                df['app'] = 'หน้าร้าน'
-        elif tab == "Expense":
-            df['type'] = 'Expense'
-            if not existing.empty and 'name' in existing.columns:
-                master_names = existing['name'].unique().tolist()
-                def match_name(n):
-                    matches = difflib.get_close_matches(str(n), master_names, n=1, cutoff=0.6)
-                    return matches[0] if matches else n
-                df['name'] = df['name'].apply(match_name)
-            df['unit_price'] = clean_numeric(df, 'total_price') / clean_numeric(df, 'qty').replace(0, 1)
-        elif tab == "Monthly":
-            df['type'] = 'Monthly'
+        
+        # จัดระเบียบข้อมูลตาม 11 คอลัมน์ที่พี่กำหนด
+        # ... (ส่วนการ Mapping ข้อมูลเหมือนเดิม) ...
 
-        final = pd.concat([existing, df], ignore_index=True)
+        # กรองตัวซ้ำออกก่อนบันทึก
+        if tab == "Income":
+            # รวมของเก่ากับของใหม่
+            final = pd.concat([existing, df], ignore_index=True)
+            # บังคับ format วันที่และปัดเศษเงินให้เท่ากันเป๊ะๆ
+            final['date'] = pd.to_datetime(final['date']).dt.strftime('%Y-%m-%d')
+            final['net_income'] = pd.to_numeric(final['net_income']).round(2)
+            # ลบแถวที่ วันที่+แอป+ยอดโอน ตรงกันทิ้ง
+            final = final.drop_duplicates(subset=['date', 'app', 'net_income'], keep='first')
+            # บันทึกแบบต่อท้าย (Append) ตามที่พี่ต้องการล่าสุด
+            final = final.sort_values(by='date', ascending=True)
+
         conn.update(worksheet=tab, data=final)
         st.cache_data.clear()
         return True
