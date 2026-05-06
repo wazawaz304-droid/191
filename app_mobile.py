@@ -326,67 +326,65 @@ if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
     refresh_all_caches()
     st.rerun()
 
-# ── Mobile nav bar — session_state based, ทำงานได้จริง ──
+# Mobile nav — pure HTML anchor horizontal bar
 st.session_state.setdefault("mobile_page", None)
-
-# CSS: target data-testid="stHorizontalBlock" แถวแรกของหน้า
-#      ซึ่งเป็น st.columns ที่ Streamlit render จริงๆ
-mob_css = (
-    "<style>"
-    # แถบพื้นหลังสีเขียวคลุมทั้งแถว
-    "@media(max-width:768px){"
-    # ซ่อน sidebar
-    "section[data-testid='stSidebar']{display:none!important}"
-    "[data-testid='collapsedControl']{display:none!important}"
-    # เพิ่ม padding ด้านบนให้ content ไม่ทับ nav
-    ".block-container{padding-top:70px!important}"
-    # แถบ nav — target element แรกของ block-container
-    ".nav-bar-wrap{"
-    "position:fixed;top:0;left:0;right:0;z-index:9999;"
-    "background:linear-gradient(90deg,#0d3d26,#1a6b4a);"
-    "padding:8px 6px;"
-    "box-shadow:0 2px 10px rgba(0,0,0,.35);"
-    "display:flex;gap:4px;overflow-x:auto;"
-    "-webkit-overflow-scrolling:touch;"
-    "scrollbar-width:none}"
-    ".nav-bar-wrap::-webkit-scrollbar{display:none}"
-    # ปุ่มแต่ละเมนู
-    ".nav-bar-wrap .stButton{flex-shrink:0!important;min-width:fit-content}"
-    ".nav-bar-wrap .stButton>button{"
-    "background:rgba(255,255,255,.13)!important;"
-    "color:#fff!important;"
-    "border:1px solid rgba(255,255,255,.28)!important;"
-    "border-radius:20px!important;"
-    "font-size:12px!important;"
-    "padding:5px 14px!important;"
-    "white-space:nowrap!important;"
-    "height:auto!important;"
-    "line-height:1.4!important;"
-    "font-family:'IBM Plex Sans Thai',sans-serif!important}"
-    ".nav-bar-wrap .stButton>button:hover{"
-    "background:rgba(255,255,255,.26)!important}"
-    "}"
-    # desktop: ซ่อน nav bar
-    "@media(min-width:769px){.nav-bar-wrap{display:none!important}}"
-    "</style>"
-)
-st.markdown(mob_css, unsafe_allow_html=True)
-
-# render nav bar
-st.markdown('<div class="nav-bar-wrap">', unsafe_allow_html=True)
-_nav_cols = st.columns(len(PAGES))
-for _i, (_icon, _label, _key) in enumerate(PAGES):
-    with _nav_cols[_i]:
-        if st.button(f"{_icon} {_label}", key=f"mnav_{_i}",
-                     use_container_width=False):
-            st.session_state["mobile_page"] = _i
-            st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
-
-# override page ถ้ากดจาก mobile nav
 _mi = st.session_state.get("mobile_page")
 if _mi is not None and 0 <= _mi < len(PAGE_KEYS):
     page = PAGE_KEYS[_mi]
+
+_NAV_CSS = """<style>
+@media(max-width:768px){
+  section[data-testid="stSidebar"]{display:none!important}
+  [data-testid="collapsedControl"]{display:none!important}
+  .block-container{padding-top:68px!important}
+}
+.mnb{
+  display:none;
+  position:fixed;top:0;left:0;right:0;z-index:9999;
+  background:linear-gradient(90deg,#0d3d26,#1a6b4a);
+  padding:8px;
+  box-shadow:0 2px 10px rgba(0,0,0,.4);
+  overflow-x:auto;white-space:nowrap;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.mnb::-webkit-scrollbar{display:none}
+.mnb a{
+  display:inline-block;
+  color:rgba(255,255,255,.75);
+  font-size:13px;font-weight:500;
+  padding:5px 14px;margin-right:4px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.2);
+  text-decoration:none;
+}
+.mnb a.on{
+  background:rgba(255,255,255,.22);
+  color:#fff;
+  border-color:rgba(255,255,255,.4);
+}
+@media(max-width:768px){.mnb{display:block}}
+</style>"""
+st.markdown(_NAV_CSS, unsafe_allow_html=True)
+
+_cur = st.session_state.get("mobile_page") or 0
+_nav_items = ""
+for _i, (_icon, _label, _key) in enumerate(PAGES):
+    _cls = "on" if _i == _cur else ""
+    _nav_items += f'<a href="?p={_i}" class="{_cls}">{_icon} {_label}</a>'
+st.markdown(f'<div class="mnb">{_nav_items}</div>', unsafe_allow_html=True)
+
+_qp = st.query_params
+if "p" in _qp:
+    try:
+        _pi = int(_qp["p"])
+        if 0 <= _pi < len(PAGE_KEYS):
+            if st.session_state.get("mobile_page") != _pi:
+                st.session_state["mobile_page"] = _pi
+                st.query_params.clear()
+                st.rerun()
+            page = PAGE_KEYS[_pi]
+    except:
+        pass
 
 
 # ============================================================
