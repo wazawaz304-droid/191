@@ -104,6 +104,38 @@ section[data-testid="stSidebar"] > div:first-child {
     .block-container { padding: 1rem; }
     .page-title { font-size: 1.5rem; }
 }
+/* ========================================= */
+/* แก้ไขสีพื้นหลัง Expander, Input, Button ใน Sidebar */
+/* ========================================= */
+
+/* 1. กล่องตั้งค่า Break-even (Expander) */
+[data-testid="stSidebar"] [data-testid="stExpander"] details, 
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+    background-color: transparent !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background-color: rgba(0, 0, 0, 0.15) !important;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* 2. ช่องกรอกตัวเลข (Input) */
+[data-testid="stSidebar"] input {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 8px !important;
+}
+
+/* 3. ปุ่มรีเฟรชข้อมูล (Button) */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: rgba(255, 255, 255, 0.25) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
