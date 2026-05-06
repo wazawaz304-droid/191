@@ -119,12 +119,19 @@ section[data-testid="stSidebar"] > div:first-child {
     border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-/* 2. ช่องกรอกตัวเลข (Input) */
-[data-testid="stSidebar"] input {
-    background-color: rgba(255, 255, 255, 0.1) !important;
-    color: #ffffff !important;
+/* 2. ช่องกรอกตัวเลข (Input) ให้พื้นหลังเข้มและตัวหนังสือขาว */
+[data-testid="stSidebar"] div[data-baseweb="input"] {
+    background-color: rgba(0, 0, 0, 0.25) !important; /* พื้นหลังกล่องเป็นสีดำโปร่งแสง */
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
     border-radius: 8px !important;
+}
+[data-testid="stSidebar"] div[data-baseweb="input"] > div {
+    background-color: transparent !important; /* ลบพื้นหลังสีขาวส่วนเกินของ Streamlit */
+}
+[data-testid="stSidebar"] input {
+    color: #ffffff !important; /* สีตัวหนังสือที่พิมพ์เป็นสีขาว */
+    background-color: transparent !important; /* ให้ทะลุเห็นสีดำด้านหลัง */
+    -webkit-text-fill-color: #ffffff !important; /* บังคับสีให้แสดงผลถูกทุกเบราว์เซอร์ */
 }
 
 /* 3. ปุ่มรีเฟรชข้อมูล (Button) */
