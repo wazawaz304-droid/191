@@ -34,7 +34,8 @@ html, body, [class*="css"] {
     background-color: var(--bg-color);
 }
 
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
+header { background-color: transparent !important; }
 .block-container { padding: 1.5rem 2rem 3rem; max-width: 1300px; }
 
 /* Sidebar Premium Design */
