@@ -326,28 +326,47 @@ if st.sidebar.button("🔄 รีเฟรชฐานข้อมูล"):
     refresh_all_caches()
     st.rerun()
 
-# Mobile bottom nav bar
-active_idx = PAGE_KEYS.index(page) if page in PAGE_KEYS else 0
-nav_html = '<div class="mobile-nav"><div class="mobile-nav-inner">'
-for i, (icon, label, key) in enumerate(PAGES):
-    cls = "mnav-btn active" if i == active_idx else "mnav-btn"
-    nav_html += (
-        f'<button class="{cls}" onclick="window.parent.location.href='
-        + "'" + f'?nav={i}' + "'" + f'">'
-        f'<span class="mnav-icon">{icon}</span>{label}</button>'
-    )
-nav_html += '</div></div>'
-st.markdown(nav_html, unsafe_allow_html=True)
+# ── Mobile nav — ใช้ session_state ทำงานได้จริงบนมือถือ ──
+st.session_state.setdefault("mobile_page", None)
 
-# รับ nav param จาก URL (มือถือกดปุ่มด้านล่าง)
-_params = st.query_params
-if "nav" in _params:
-    try:
-        _nav_i = int(_params["nav"])
-        if 0 <= _nav_i < len(PAGE_KEYS):
-            page = PAGE_KEYS[_nav_i]
-    except:
-        pass
+# CSS สำหรับปุ่ม mobile nav (แสดงเฉพาะมือถือ)
+mob_css = (
+    "<style>"
+    ".mob-nav-row { display:none }"
+    "@media(max-width:768px){"
+    ".mob-nav-row{"
+    "display:flex;gap:4px;overflow-x:auto;padding:4px 0 10px;"
+    "margin-bottom:0.5rem;-webkit-overflow-scrolling:touch;"
+    "position:fixed;top:0;left:0;right:0;z-index:9999;"
+    "background:linear-gradient(90deg,#0d3d26,#1a6b4a);"
+    "padding:8px 8px env(safe-area-inset-top,4px);box-shadow:0 2px 12px rgba(0,0,0,.3)}"
+    ".mob-nav-row .stButton{flex-shrink:0}"
+    ".mob-nav-row .stButton>button{"
+    "background:rgba(255,255,255,.12)!important;color:#fff!important;"
+    "border:1px solid rgba(255,255,255,.25)!important;"
+    "border-radius:20px!important;font-size:12px!important;"
+    "padding:5px 12px!important;white-space:nowrap!important;"
+    "font-family:'IBM Plex Sans Thai',sans-serif!important}"
+    ".mob-nav-row .stButton>button:hover{"
+    "background:rgba(255,255,255,.25)!important}"
+    "}"
+    "</style>"
+)
+st.markdown(mob_css, unsafe_allow_html=True)
+
+st.markdown('<div class="mob-nav-row">', unsafe_allow_html=True)
+nav_cols = st.columns(len(PAGES))
+for i, (icon, label, key) in enumerate(PAGES):
+    with nav_cols[i]:
+        if st.button(f"{icon} {label}", key=f"mnav_{i}"):
+            st.session_state["mobile_page"] = i
+            st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+
+# override page ถ้ากดจากมือถือ
+_mi = st.session_state.get("mobile_page")
+if _mi is not None and 0 <= _mi < len(PAGE_KEYS):
+    page = PAGE_KEYS[_mi]
 
 
 # ============================================================
