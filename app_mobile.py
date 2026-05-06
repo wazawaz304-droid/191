@@ -91,39 +91,21 @@ def process_extraction(data, p_type, is_bytes=False, mime=None):
 def save_to_tab(df, tab):
     if conn is None or df.empty: return False
     try:
-        existing = load_data(tab)
-        
-        # จัดการข้อมูลให้ตรงตามโครงสร้าง 11 คอลัมน์ของพี่
         if tab == "Income":
             df['type'] = 'Income'
-            if 'name' not in df.columns: 
-                df['name'] = df['app'] + " Daily Income"
-            if 'qty' not in df.columns: df['qty'] = 1
-            if 'unit' not in df.columns: df['unit'] = "วัน"
-            if 'total_price' not in df.columns: df['total_price'] = df['net_income']
-            if 'unit_price' not in df.columns: df['unit_price'] = df['net_income']
-            
-            # บังคับมาตรฐานชื่อแอป
-            df['app'] = df['app'].apply(lambda x: "GrabFood" if "grab" in str(x).lower() else x)
+            if 'app' not in df.columns: df['app'] = 'หน้าร้าน'
+            if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
+        elif tab == "Expense":
+            df['type'] = 'Expense'
+            if 'name' not in df.columns: df['name'] = 'ไม่ได้ระบุ'
+        elif tab == "Monthly":
+            df['type'] = 'Monthly'
+            if 'net' in df.columns: df.rename(columns={'net': 'net_income'}, inplace=True)
 
-        # เรียงลำดับคอลัมน์ให้เป๊ะตามที่พี่แจ้งมา
-        cols_order = ['name', 'qty', 'unit', 'total_price', 'date', 'unit_price', 'app', 'net_income', 'gross_sales', 'gp_amount', 'type']
-        
-        # เพิ่มคอลัมน์ที่ขาดให้เป็นค่าว่าง
-        for col in cols_order:
-            if col not in df.columns: df[col] = ""
-            
-        df = df[cols_order] # บังคับลำดับ
-
-        # รวมข้อมูลและลบตัวซ้ำ
+        existing = load_data(tab)
         final = pd.concat([existing, df], ignore_index=True)
-        if tab == "Income":
-            final['date'] = pd.to_datetime(final['date']).dt.strftime('%Y-%m-%d')
-            final = final.drop_duplicates(subset=['date', 'app', 'net_income'], keep='first')
-            final = final.sort_values(by='date', ascending=False)
-
         conn.update(worksheet=tab, data=final)
-        st.cache_data.clear()
+        refresh_all_caches()
         return True
     except Exception as e:
         st.error(f"❌ บันทึกล้มเหลว: {e}")
