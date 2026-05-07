@@ -152,10 +152,7 @@ section[data-testid="stSidebar"] > div:first-child {
 
 @st.cache_resource
 def get_conn():
-    """
-    ✅ @st.cache_resource - Cache Connection Object
-    ใช้ 1 ครั้งต่อเซสชัน
-    """
+    """✅ @st.cache_resource - Cache Connection Object"""
     try:
         logger.info("🔌 สร้าง Google Sheets Connection...")
         return st.connection("gsheets", type=GSheetsConnection)
@@ -166,10 +163,7 @@ def get_conn():
 
 @st.cache_resource
 def get_gemini_client():
-    """
-    ✅ @st.cache_resource - Cache Gemini Client
-    ใช้ 1 ครั้งต่อเซสชัน
-    """
+    """✅ @st.cache_resource - Cache Gemini Client"""
     try:
         logger.info("🤖 สร้าง Gemini Client...")
         return genai.Client(api_key=st.secrets["gemini"]["api_key"])
@@ -185,12 +179,9 @@ client = get_gemini_client()
 # 3. DATA LOADING FUNCTIONS (WITH CACHING)
 # ============================================================
 
-@st.cache_data(ttl=3600)  # Cache 1 ชั่วโมง
+@st.cache_data(ttl=3600)
 def load_income_data():
-    """
-    ✅ @st.cache_data - Cache Income Data
-    TTL: 3600 วินาที (1 ชั่วโมง)
-    """
+    """✅ @st.cache_data - Cache Income Data (1 ชั่วโมง)"""
     logger.info("📥 โหลด Income Data...")
     if conn is None:
         return pd.DataFrame()
@@ -206,12 +197,9 @@ def load_income_data():
         logger.error(f"❌ โหลด Income Data ล้มเหลว: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=3600)  # Cache 1 ชั่วโมง
+@st.cache_data(ttl=3600)
 def load_expense_data():
-    """
-    ✅ @st.cache_data - Cache Expense Data
-    TTL: 3600 วินาที (1 ชั่วโมง)
-    """
+    """✅ @st.cache_data - Cache Expense Data (1 ชั่วโมง)"""
     logger.info("📥 โหลด Expense Data...")
     if conn is None:
         return pd.DataFrame()
@@ -227,12 +215,9 @@ def load_expense_data():
         logger.error(f"❌ โหลด Expense Data ล้มเหลว: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=3600)  # Cache 1 ชั่วโมง
+@st.cache_data(ttl=3600)
 def load_monthly_data():
-    """
-    ✅ @st.cache_data - Cache Monthly Data
-    TTL: 3600 วินาที (1 ชั่วโมง)
-    """
+    """✅ @st.cache_data - Cache Monthly Data (1 ชั่วโมง)"""
     logger.info("📥 โหลด Monthly Data...")
     if conn is None:
         return pd.DataFrame()
@@ -249,10 +234,7 @@ def load_monthly_data():
         return pd.DataFrame()
 
 def load_data(sheet_name):
-    """
-    ⚠️ ฟังก์ชันนี้ไม่มี Cache เพราะต้องการความยืดหยุ่น
-    ใช้ load_income_data(), load_expense_data(), load_monthly_data() แทน
-    """
+    """⚠️ ฟังก์ชันนี้ไม่มี Cache - ใช้สำหรับ Dynamic Sheets"""
     if conn is None:
         return pd.DataFrame()
     try:
@@ -265,12 +247,8 @@ def load_data(sheet_name):
         logger.error(f"❌ โหลด {sheet_name} ล้มเหลว: {e}")
         return pd.DataFrame()
 
-@st.cache_data
 def clean_numeric(df, col_name):
-    """
-    ✅ @st.cache_data - Cache Numeric Cleaning
-    ไม่มี TTL เพราะผลลัพธ์ขึ้นอยู่กับ Input
-    """
+    """✅ Clean numeric values"""
     if col_name in df.columns:
         cleaned = df[col_name].astype(str).str.replace(r'[^\d.]', '', regex=True)
         return pd.to_numeric(cleaned, errors='coerce').fillna(0)
@@ -281,9 +259,7 @@ def clean_numeric(df, col_name):
 # ============================================================
 
 def save_to_tab(df, tab):
-    """
-    ⚠️ ฟังก์ชันนี้ไม่มี Cache เพราะเป็น Write Operation
-    """
+    """⚠️ ฟังก์ชันนี้ไม่มี Cache - Write Operation"""
     if conn is None or df.empty:
         return False
     try:
@@ -339,12 +315,8 @@ def save_to_tab(df, tab):
 # 5. AI FUNCTION
 # ============================================================
 
-@st.cache_data
 def process_extraction(data, p_type, is_bytes=False, mime=None, existing_names=None):
-    """
-    ⚠️ ฟังก์ชันนี้มี @st.cache_data แต่ต้องระวัง
-    ปัญหา: ข้อมูล Input อาจมีขนาดใหญ่ (bytes)
-    """
+    """AI Extraction Function"""
     if client is None:
         st.error("ไม่พบ Gemini API Key")
         return []
@@ -402,7 +374,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
     
-    # ✅ แสดง Cache Status
+    # ✅ Cache Status
     with st.expander("📊 Cache Status"):
         st.write("**Cache Information:**")
         st.write(f"- Income Data: Cache 1 ชั่วโมง")
@@ -417,7 +389,7 @@ with st.sidebar:
             st.rerun()
 
 # ============================================================
-# 7. PAGE — DASHBOARD รายวัน (WITH CACHING)
+# 7. PAGE — DASHBOARD รายวัน
 # ============================================================
 if page == "📊 Dashboard รายวัน":
     col_t, col_r = st.columns([4, 1])
@@ -524,7 +496,7 @@ if page == "📊 Dashboard รายวัน":
             st.plotly_chart(fig_l, use_container_width=True)
 
 # ============================================================
-# 8. PAGE — วิเคราะห์รายเดือน (WITH CACHING)
+# 8. PAGE — วิเคราะห์รายเดือน
 # ============================================================
 elif page == "📈 วิเคราะห์รายเดือน":
     st.markdown("<div class='page-title'>📈 วิเคราะห์รายเดือน</div>", unsafe_allow_html=True)
@@ -582,29 +554,145 @@ elif page == "📈 วิเคราะห์รายเดือน":
         st.info("ยังไม่มีข้อมูลรายเดือน — บันทึกสรุปรายเดือนก่อนครับ")
 
 # ============================================================
-# 9. CACHE OPTIMIZATION SUMMARY
+# 9. PAGE — บันทึกรายรับ
 # ============================================================
+elif page == "💰 บันทึกรายรับ":
+    st.markdown("<div class='page-title'>💰 บันทึกรายรับ</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>รองรับข้อความ · ไฟล์ PDF · รูปภาพ · เสียง</div>", unsafe_allow_html=True)
 
-"""
-📚 CACHE OPTIMIZATION APPLIED:
+    rtype = st.radio("ประเภท:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"], horizontal=True)
+    method = st.radio("วิธีบันทึก:", ["⌨️ พิมพ์/วางข้อความ", "📷 ถ่ายรูป/อัปโหลด", "🎙️ บันทึกเสียง", "📁 ไฟล์ PDF"], horizontal=True)
 
-✅ @st.cache_data (ข้อมูล):
-   - load_income_data() - Cache 1 ชั่วโมง
-   - load_expense_data() - Cache 1 ชั่วโมง
-   - load_monthly_data() - Cache 1 ชั่วโมง
-   - clean_numeric() - Cache ตามค่า Input
+    res = None
 
-✅ @st.cache_resource (ทรัพยากร):
-   - get_conn() - Cache ตลอดเซสชัน
-   - get_gemini_client() - Cache ตลอดเซสชัน
+    if method == "⌨️ พิมพ์/วางข้อความ":
+        txt = st.text_area("วางข้อความรายงานยอดขายที่นี่:", placeholder="เช่น: Grab ยอดโอน 1,250 บาท วันที่ 1 พฤษภาคม")
+        if txt:
+            res = process_extraction(txt, rtype)
 
-✅ Cache Management:
-   - ปุ่มรีเฟรช - ล้าง Cache และ Rerun
-   - Cache Status Display - ดูสถานะ Cache
-   - Logging - ติดตามการทำงาน
+    elif method == "📷 ถ่ายรูป/อัปโหลด":
+        img = st.file_uploader("อัปโหลดรูปภาพ:", type=["jpg", "jpeg", "png", "webp"])
+        if img:
+            img_bytes = img.read()
+            mime = f"image/{img.name.split('.')[-1].lower()}"
+            res = process_extraction(img_bytes, rtype, is_bytes=True, mime=mime)
 
-📈 Performance Gains:
-   - Speed: 50-98% เร็วขึ้น ⚡
-   - API Calls: ลด 70-80% 📉
-   - User Experience: ดีขึ้นมาก 😊
-"""
+    elif method == "🎙️ บันทึกเสียง":
+        audio = st.file_uploader("อัปโหลดไฟล์เสียง:", type=["mp3", "wav", "ogg", "flac"])
+        if audio:
+            st.info("🎙️ บันทึกเสียง - ยังไม่รองรับในเวอร์ชันนี้")
+
+    elif method == "📁 ไฟล์ PDF":
+        pdf = st.file_uploader("อัปโหลด PDF:", type=["pdf"])
+        if pdf:
+            st.info("📄 ไฟล์ PDF - ยังไม่รองรับในเวอร์ชันนี้")
+
+    if res:
+        st.markdown("<div class='section-title'>📋 ข้อมูลที่สกัดได้</div>", unsafe_allow_html=True)
+        st.json(res)
+
+        if st.button("✅ บันทึกข้อมูล", key="save_income"):
+            df_new = pd.DataFrame(res)
+            if save_to_tab(df_new, "Income"):
+                st.success("✅ บันทึกสำเร็จ!")
+                st.rerun()
+
+# ============================================================
+# 10. PAGE — บันทึกรายจ่าย
+# ============================================================
+elif page == "💸 บันทึกรายจ่าย":
+    st.markdown("<div class='page-title'>💸 บันทึกรายจ่าย</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>รองรับข้อความ · ไฟล์ PDF · รูปภาพ · เสียง</div>", unsafe_allow_html=True)
+
+    method = st.radio("วิธีบันทึก:", ["⌨️ พิมพ์/วางข้อความ", "📷 ถ่ายรูป/อัปโหลด", "🎙️ บันทึกเสียง", "📁 ไฟล์ PDF"], horizontal=True)
+
+    res = None
+
+    if method == "⌨️ พิมพ์/วางข้อความ":
+        txt = st.text_area("วางข้อความรายจ่ายที่นี่:", placeholder="เช่น: ซื้อไก่ 500 บาท, น้ำปลา 200 บาท")
+        if txt:
+            # ✅ ใช้ load_expense_data() เพื่อดึงชื่อสินค้าเดิม
+            df_exp = load_expense_data()
+            existing_names = df_exp['name'].unique().tolist() if not df_exp.empty and 'name' in df_exp.columns else []
+            res = process_extraction(txt, "Expense", existing_names=existing_names)
+
+    elif method == "📷 ถ่ายรูป/อัปโหลด":
+        img = st.file_uploader("อัปโหลดรูปภาพ:", type=["jpg", "jpeg", "png", "webp"])
+        if img:
+            img_bytes = img.read()
+            mime = f"image/{img.name.split('.')[-1].lower()}"
+            df_exp = load_expense_data()
+            existing_names = df_exp['name'].unique().tolist() if not df_exp.empty and 'name' in df_exp.columns else []
+            res = process_extraction(img_bytes, "Expense", is_bytes=True, mime=mime, existing_names=existing_names)
+
+    elif method == "🎙️ บันทึกเสียง":
+        audio = st.file_uploader("อัปโหลดไฟล์เสียง:", type=["mp3", "wav", "ogg", "flac"])
+        if audio:
+            st.info("🎙️ บันทึกเสียง - ยังไม่รองรับในเวอร์ชันนี้")
+
+    elif method == "📁 ไฟล์ PDF":
+        pdf = st.file_uploader("อัปโหลด PDF:", type=["pdf"])
+        if pdf:
+            st.info("📄 ไฟล์ PDF - ยังไม่รองรับในเวอร์ชันนี้")
+
+    if res:
+        st.markdown("<div class='section-title'>📋 ข้อมูลที่สกัดได้</div>", unsafe_allow_html=True)
+        st.json(res)
+
+        if st.button("✅ บันทึกข้อมูล", key="save_expense"):
+            df_new = pd.DataFrame(res)
+            if save_to_tab(df_new, "Expense"):
+                st.success("✅ บันทึกสำเร็จ!")
+                st.rerun()
+
+# ============================================================
+# 11. PAGE — AI AGENT
+# ============================================================
+elif page == "🤖 AI Agent":
+    st.markdown("<div class='page-title'>🤖 AI Agent</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>ตัวช่วย AI สำหรับวิเคราะห์ข้อมูล</div>", unsafe_allow_html=True)
+
+    # ✅ ใช้ฟังก์ชันที่มี Cache
+    df_i = load_income_data()
+    df_e = load_expense_data()
+
+    if not df_i.empty or not df_e.empty:
+        st.info("🤖 AI Agent - ยังไม่พร้อมใช้งานในเวอร์ชันนี้")
+        st.write("ฟีเจอร์นี้จะช่วยให้คุณสามารถสอบถาม AI เกี่ยวกับข้อมูลของคุณได้")
+    else:
+        st.warning("⚠️ ยังไม่มีข้อมูล - บันทึกข้อมูลรายรับ/รายจ่ายก่อนครับ")
+
+# ============================================================
+# 12. PAGE — ข้อมูลทั้งหมด
+# ============================================================
+elif page == "📋 ข้อมูลทั้งหมด":
+    st.markdown("<div class='page-title'>📋 ข้อมูลทั้งหมด</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>ดูข้อมูลทั้งหมดจากทุก Sheet</div>", unsafe_allow_html=True)
+
+    # ✅ ใช้ฟังก์ชันที่มี Cache
+    df_i = load_income_data()
+    df_e = load_expense_data()
+    df_m = load_monthly_data()
+
+    tab1, tab2, tab3 = st.tabs(["📊 Income", "📦 Expense", "📅 Monthly"])
+
+    with tab1:
+        st.markdown("<div class='section-title'>📊 ข้อมูลรายรับ</div>", unsafe_allow_html=True)
+        if not df_i.empty:
+            st.dataframe(df_i, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลรายรับ")
+
+    with tab2:
+        st.markdown("<div class='section-title'>📦 ข้อมูลรายจ่าย</div>", unsafe_allow_html=True)
+        if not df_e.empty:
+            st.dataframe(df_e, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลรายจ่าย")
+
+    with tab3:
+        st.markdown("<div class='section-title'>📅 ข้อมูลรายเดือน</div>", unsafe_allow_html=True)
+        if not df_m.empty:
+            st.dataframe(df_m, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลรายเดือน")
