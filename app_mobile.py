@@ -598,51 +598,58 @@ elif page == "💰 บันทึกรายรับ":
                 st.rerun()
 
 # ============================================================
-# 10. PAGE — บันทึกรายจ่าย
+# 10. PAGE — บันทึกรายจ่าย (แก้ไขส่วนกล้องและเสียงให้ใช้งานได้จริง)
 # ============================================================
 elif page == "💸 บันทึกรายจ่าย":
     st.markdown("<div class='page-title'>💸 บันทึกรายจ่าย</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>รองรับข้อความ · ไฟล์ PDF · รูปภาพ · เสียง</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>สแกนบิล · อัดเสียงพูด · พิมพ์รายการ</div>", unsafe_allow_html=True)
 
-    method = st.radio("วิธีบันทึก:", ["⌨️ พิมพ์/วางข้อความ", "📷 ถ่ายรูป/อัปโหลด", "🎙️ บันทึกเสียง", "📁 ไฟล์ PDF"], horizontal=True)
+    method = st.radio("เลือกวิธีบันทึก:", ["📷 ถ่ายรูปใบเสร็จ", "🎙️ พูดบันทึกเสียง", "⌨️ พิมพ์เอง", "🖼️ อัปโหลดรูป"], horizontal=True)
 
-    res = None
+    # ดึงชื่อสินค้าเดิมที่มีในชีตมาให้ AI ช่วยจำ
+    df_exp = load_expense_data()
+    existing_names = df_exp['name'].unique().tolist() if not df_exp.empty else []
+    res_ex = None
 
-    if method == "⌨️ พิมพ์/วางข้อความ":
-        txt = st.text_area("วางข้อความรายจ่ายที่นี่:", placeholder="เช่น: ซื้อไก่ 500 บาท, น้ำปลา 200 บาท")
-        if txt:
-            # ✅ ใช้ load_expense_data() เพื่อดึงชื่อสินค้าเดิม
-            df_exp = load_expense_data()
-            existing_names = df_exp['name'].unique().tolist() if not df_exp.empty and 'name' in df_exp.columns else []
-            res = process_extraction(txt, "Expense", existing_names=existing_names)
+    # --- ส่วนที่ 1: ถ่ายรูปสดจากกล้อง ---
+    if method == "📷 ถ่ายรูปใบเสร็จ":
+        img_cam = st.camera_input("📸 เล็งไปที่ใบเสร็จหรือบิลวัตถุดิบ")
+        if img_cam and st.button("🪄 สกัดข้อมูลจากรูป", type="primary"):
+            with st.spinner("AI กำลังอ่านบิล..."):
+                res_ex = process_extraction(img_cam.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_names)
 
-    elif method == "📷 ถ่ายรูป/อัปโหลด":
-        img = st.file_uploader("อัปโหลดรูปภาพ:", type=["jpg", "jpeg", "png", "webp"])
-        if img:
-            img_bytes = img.read()
-            mime = f"image/{img.name.split('.')[-1].lower()}"
-            df_exp = load_expense_data()
-            existing_names = df_exp['name'].unique().tolist() if not df_exp.empty and 'name' in df_exp.columns else []
-            res = process_extraction(img_bytes, "Expense", is_bytes=True, mime=mime, existing_names=existing_names)
+    # --- ส่วนที่ 2: อัดเสียงสด ---
+    elif method == "🎙️ พูดบันทึกเสียง":
+        audio_rec = st.audio_input("🎙️ กดปุ่มแล้วพูดรายการ (เช่น: ซื้อไก่ 500 บาท)")
+        if audio_rec and st.button("🚀 แปลงเสียงเป็นรายการ", type="primary"):
+            with st.spinner("AI กำลังฟังเสียง..."):
+                res_ex = process_extraction(audio_rec.read(), "Expense", is_bytes=True, mime="audio/wav", existing_names=existing_names)
 
-    elif method == "🎙️ บันทึกเสียง":
-        audio = st.file_uploader("อัปโหลดไฟล์เสียง:", type=["mp3", "wav", "ogg", "flac"])
-        if audio:
-            st.info("🎙️ บันทึกเสียง - ยังไม่รองรับในเวอร์ชันนี้")
+    # --- ส่วนที่ 3: พิมพ์ข้อความเอง ---
+    elif method == "⌨️ พิมพ์เอง":
+        txt = st.text_area("วางข้อความรายจ่ายที่นี่:", placeholder="เช่น: ซื้อไข่ไก่ 3 แผง 420 บาท")
+        if txt and st.button("🪄 วิเคราะห์ข้อความ", type="primary"):
+            res_ex = process_extraction(txt, "Expense", existing_names=existing_names)
 
-    elif method == "📁 ไฟล์ PDF":
-        pdf = st.file_uploader("อัปโหลด PDF:", type=["pdf"])
-        if pdf:
-            st.info("📄 ไฟล์ PDF - ยังไม่รองรับในเวอร์ชันนี้")
+    # --- ส่วนที่ 4: อัปโหลดไฟล์รูป ---
+    elif method == "🖼️ อัปโหลดรูป":
+        img_file = st.file_uploader("เลือกรูปภาพใบเสร็จ", type=["jpg", "jpeg", "png"])
+        if img_file and st.button("🪄 วิเคราะห์จากไฟล์", type="primary"):
+            res_ex = process_extraction(img_file.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_names)
 
-    if res:
-        st.markdown("<div class='section-title'>📋 ข้อมูลที่สกัดได้</div>", unsafe_allow_html=True)
-        st.json(res)
-
-        if st.button("✅ บันทึกข้อมูล", key="save_expense"):
-            df_new = pd.DataFrame(res)
-            if save_to_tab(df_new, "Expense"):
-                st.success("✅ บันทึกสำเร็จ!")
+    # --- ส่วนการตรวจสอบและบันทึกลง Sheets ---
+    if res_ex:
+        st.markdown("<div class='section-title'>✏️ ตรวจสอบข้อมูลก่อนบันทึก</div>", unsafe_allow_html=True)
+        edited_ex = st.data_editor(pd.DataFrame(res_ex), use_container_width=True, num_rows="dynamic")
+        
+        c1, c2 = st.columns([1, 4])
+        with c1:
+            if st.button("💾 บันทึกทันที", type="primary"):
+                if save_to_tab(edited_ex, "Expense"):
+                    st.success("✅ บันทึกรายจ่ายร้าน @304 สำเร็จ!")
+                    st.rerun()
+        with c2:
+            if st.button("🗑️ ล้างรายการ"):
                 st.rerun()
 
 # ============================================================
