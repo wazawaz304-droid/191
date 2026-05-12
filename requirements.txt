@@ -7,3 +7,4 @@ google-genai
 st-gsheets-connection
 sqlalchemy
 psycopg2-binary
+audio-recorder-streamlit
