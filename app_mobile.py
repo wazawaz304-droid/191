@@ -732,3 +732,76 @@ elif page == "📋 ข้อมูลทั้งหมด":
             st.dataframe(df_m, use_container_width=True)
         else:
             st.info("ยังไม่มีข้อมูลรายเดือน")
+
+# ============================================================
+# 13. PAGE — LINE MAN INSIGHT (วิเคราะห์เมนู + การตลาด)
+# ============================================================
+elif page == "🎯 LINE MAN Insight":
+    st.markdown("<div class='page-title'>🎯 LINE MAN Insight</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>วิเคราะห์สินค้าขายดี และ ประสิทธิภาพโฆษณาจาก LINE MAN</div>", unsafe_allow_html=True)
+
+    method = st.radio("วิธีอัปโหลดข้อมูล:", ["📷 ถ่ายรูปสด/อัปโหลดรูป", "⌨️ วางข้อความ"], horizontal=True)
+
+    # 1. การรับข้อมูล (Input)
+    res_insight = None
+    if method == "📷 ถ่ายรูปสด/อัปโหลดรูป":
+        img_insight = st.camera_input("📸 ถ่ายรูปหน้า 'อันดับสินค้าขายดี' หรือ 'สรุปยอดขาย'") or st.file_uploader("เลือกรูปภาพแอป LINE MAN", type=["jpg", "png", "jpeg"])
+        if img_insight and st.button("🪄 วิเคราะห์เชิงลึก", type="primary"):
+            with st.spinner("AI กำลังวิเคราะห์ข้อมูลสินค้าและการตลาด..."):
+                # สร้าง Prompt พิเศษเพื่อสกัดข้อมูลจากรูปที่พี่ส่งมา
+                prompt_insight = """
+                คุณคือผู้เชี่ยวชาญการตลาดดิจิทัล สกัดข้อมูลจากรูปภาพแอป LINE MAN Merchant เป็น JSON array:
+                1. หากเป็นรูป 'อันดับสินค้าขายดี': [{"type": "Menu", "name": "ชื่อเมนู", "qty": จำนวน, "amount": ยอดเงิน}]
+                2. หากเป็นรูป 'สรุปยอดขาย': [{"type": "Marketing", "name": "โฆษณา Listing", "qty": จำนวนออเดอร์, "amount": 0}, {"type": "Marketing", "name": "การใช้โปรโมชั่น", "qty": ครั้ง, "amount": 0}]
+                ใช้ปี ค.ศ. 2026 เท่านั้น ตอบเฉพาะ PURE JSON
+                """
+                res_insight = process_extraction(img_insight.read(), "Insight", is_bytes=True, mime="image/jpeg")
+
+    # 2. การแสดงผลวิเคราะห์ (Analytics)
+    df_insight_db = load_data("LM_Insight") # พี่อย่าลืมไปสร้างแท็บนี้ใน Sheets นะครับ
+
+    if not df_insight_db.empty:
+        # ส่วนที่ 1: วิเคราะห์เมนูขายดี (Product Insight)
+        st.markdown("<div class='section-title'>🍜 อันดับเมนูขายดี (สะสม)</div>", unsafe_allow_html=True)
+        df_menu = df_insight_db[df_insight_db['type'] == 'Menu'].copy()
+        if not df_menu.empty:
+            df_menu['qty'] = pd.to_numeric(df_menu['qty'])
+            top_menu = df_menu.groupby('name')['qty'].sum().sort_values(ascending=False).reset_index()
+            
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                fig_menu = px.bar(top_menu, x='qty', y='name', orientation='h', 
+                                 title="เมนูไหนถูกใจลูกค้าสุด?", color='qty', color_continuous_scale='Greens')
+                st.plotly_chart(fig_menu, use_container_width=True)
+            with c2:
+                st.write("**💡 AI แนะนำ:**")
+                # คำนวณเบื้องต้นให้ AI วิเคราะห์
+                best_item = top_menu.iloc[0]['name']
+                st.info(f"สินค้าที่ต้องเตรียมวัตถุดิบมากที่สุดคือ '{best_item}' ควรตรวจสอบสต็อกสม่ำเสมอครับ")
+
+        # ส่วนที่ 2: วิเคราะห์โฆษณา (Marketing Efficiency)
+        st.markdown("<div class='section-title'>📈 ประสิทธิภาพโฆษณาและโปรโมชั่น</div>", unsafe_allow_html=True)
+        df_mkt = df_insight_db[df_insight_db['type'] == 'Marketing'].copy()
+        if not df_mkt.empty:
+            df_mkt['qty'] = pd.to_numeric(df_mkt['qty'])
+            mkt_stats = df_mkt.groupby('name')['qty'].sum().reset_index()
+            
+            m1, m2 = st.columns(2)
+            ad_orders = mkt_stats[mkt_stats['name'].str.contains("โฆษณา")]['qty'].sum()
+            promo_use = mkt_stats[mkt_stats['name'].str.contains("โปรโมชั่น")]['qty'].sum()
+            
+            m1.metric("🎯 ออเดอร์จากโฆษณา", f"{ad_orders} รายการ")
+            m2.metric("🎁 จำนวนการใช้โปรโมชั่น", f"{promo_use} ครั้ง")
+            
+            st.caption("ข้อมูลนี้ช่วยให้พี่ตัดสินใจได้ว่า การซื้อ Listing ช่วยดันยอดขายได้จริงหรือไม่")
+
+    # 3. จัดการข้อมูลใหม่
+    if res_insight:
+        st.session_state.tmp_insight = pd.DataFrame(res_insight)
+        st.write("✏️ ตรวจสอบข้อมูลก่อนบันทึก:")
+        edited_insight = st.data_editor(st.session_state.tmp_insight, use_container_width=True)
+        if st.button("💾 ยืนยันบันทึกข้อมูล Insight", type="primary"):
+            if save_to_tab(edited_insight, "LM_Insight"):
+                st.success("บันทึกข้อมูล LINE MAN Insight สำเร็จ!")
+                st.cache_data.clear()
+                st.rerun()
