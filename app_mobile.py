@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import difflib
 import logging
+import sqlalchemy
 
 # ============================================================
 # 0. LOGGING SETUP
@@ -147,23 +148,30 @@ section[data-testid="stSidebar"] > div:first-child {
 """, unsafe_allow_html=True)
 
 # ============================================================
-# 2. CONNECTIONS & DATA LOAD (WITH CACHING)
+# 2. CONNECTIONS (SUPABASE & GSHEETS & GEMINI)
 # ============================================================
 
 @st.cache_resource
-def get_conn():
-    """✅ @st.cache_resource - Cache Connection Object"""
+def get_supabase_conn():
+    try:
+        logger.info("🔌 สร้าง Supabase Connection...")
+        return st.connection("supabase", type="sql")
+    except Exception as e:
+        logger.error(f"❌ เชื่อมต่อ Supabase ไม่ได้: {e}")
+        st.error(f"⚠️ เชื่อมต่อ Supabase ไม่ได้: {e}")
+        return None
+
+@st.cache_resource
+def get_gsheets_conn():
     try:
         logger.info("🔌 สร้าง Google Sheets Connection...")
         return st.connection("gsheets", type=GSheetsConnection)
     except Exception as e:
         logger.error(f"❌ เชื่อมต่อ Google Sheets ไม่ได้: {e}")
-        st.error(f"⚠️ เชื่อมต่อ Google Sheets ไม่ได้: {e}")
         return None
 
 @st.cache_resource
 def get_gemini_client():
-    """✅ @st.cache_resource - Cache Gemini Client"""
     try:
         logger.info("🤖 สร้าง Gemini Client...")
         return genai.Client(api_key=st.secrets["gemini"]["api_key"])
@@ -172,184 +180,147 @@ def get_gemini_client():
         st.error(f"⚠️ ไม่พบ API Key: {e}")
         return None
 
-conn = get_conn()
+conn_sb = get_supabase_conn()
+conn_gs = get_gsheets_conn()
 client = get_gemini_client()
 
 # ============================================================
-# 3. DATA LOADING FUNCTIONS (WITH CACHING)
+# 3. DATA LOADING FUNCTIONS (FROM SUPABASE)
 # ============================================================
 
-@st.cache_data(ttl=3600)
-def load_income_data():
-    """✅ @st.cache_data - Cache Income Data (1 ชั่วโมง)"""
-    logger.info("📥 โหลด Income Data...")
-    if conn is None:
+@st.cache_data(ttl=600)
+def load_data_sql(table_name):
+    """✅ โหลดข้อมูลจาก Supabase โดยเรียงวันที่ล่าสุดขึ้นก่อน"""
+    if conn_sb is None:
         return pd.DataFrame()
     try:
-        df = conn.read(worksheet="Income", ttl=0)
-        if df is not None:
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            result = df.dropna(how='all')
-            logger.info(f"✅ โหลด Income Data สำเร็จ ({len(result)} แถว)")
-            return result
-        return pd.DataFrame()
+        # ตรวจสอบชื่อคอลัมน์วันที่
+        date_col = "data" if table_name == "lineman_insight" else ("month_year" if table_name == "monthly" else "date")
+        
+        query = f"SELECT * FROM {table_name} ORDER BY {date_col} DESC"
+        df = conn_sb.query(query)
+        
+        if not df.empty and date_col in df.columns and table_name != "monthly":
+            df[date_col] = pd.to_datetime(df[date_col])
+        return df
     except Exception as e:
-        logger.error(f"❌ โหลด Income Data ล้มเหลว: {e}")
+        logger.error(f"❌ โหลดข้อมูล {table_name} ล้มเหลว: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=3600)
-def load_expense_data():
-    """✅ @st.cache_data - Cache Expense Data (1 ชั่วโมง)"""
-    logger.info("📥 โหลด Expense Data...")
-    if conn is None:
-        return pd.DataFrame()
-    try:
-        df = conn.read(worksheet="Expense", ttl=0)
-        if df is not None:
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            result = df.dropna(how='all')
-            logger.info(f"✅ โหลด Expense Data สำเร็จ ({len(result)} แถว)")
-            return result
-        return pd.DataFrame()
-    except Exception as e:
-        logger.error(f"❌ โหลด Expense Data ล้มเหลว: {e}")
-        return pd.DataFrame()
-
-@st.cache_data(ttl=3600)
-def load_monthly_data():
-    """✅ @st.cache_data - Cache Monthly Data (1 ชั่วโมง)"""
-    logger.info("📥 โหลด Monthly Data...")
-    if conn is None:
-        return pd.DataFrame()
-    try:
-        df = conn.read(worksheet="Monthly", ttl=0)
-        if df is not None:
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            result = df.dropna(how='all')
-            logger.info(f"✅ โหลด Monthly Data สำเร็จ ({len(result)} แถว)")
-            return result
-        return pd.DataFrame()
-    except Exception as e:
-        logger.error(f"❌ โหลด Monthly Data ล้มเหลว: {e}")
-        return pd.DataFrame()
-
-def load_data(sheet_name):
-    """⚠️ ฟังก์ชันนี้ไม่มี Cache - ใช้สำหรับ Dynamic Sheets"""
-    if conn is None:
-        return pd.DataFrame()
-    try:
-        df = conn.read(worksheet=sheet_name, ttl=0)
-        if df is not None:
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            return df.dropna(how='all')
-        return pd.DataFrame()
-    except Exception as e:
-        logger.error(f"❌ โหลด {sheet_name} ล้มเหลว: {e}")
-        return pd.DataFrame()
+def load_income_data(): return load_data_sql("income")
+def load_expense_data(): return load_data_sql("expense")
+def load_monthly_data(): return load_data_sql("monthly")
+def load_data(sheet_name): 
+    t_name = "lineman_insight" if sheet_name == "LM_Insight" else sheet_name.lower()
+    return load_data_sql(t_name)
 
 def clean_numeric(df, col_name):
     """✅ Clean numeric values"""
     if col_name in df.columns:
-        cleaned = df[col_name].astype(str).str.replace(r'[^\d.]', '', regex=True)
+        cleaned = df[col_name].astype(str).str.replace(r'[^\d.-]', '', regex=True)
         return pd.to_numeric(cleaned, errors='coerce').fillna(0)
     return pd.Series([0.0] * len(df))
 
 # ============================================================
-# 4. CORE LOGIC (Mapping 11 Columns & Anti-Duplicate)
+# 4. CORE LOGIC (บันทึกข้อมูลเข้า SUPABASE)
 # ============================================================
 
 def save_to_tab(df, tab):
-    """⚠️ ฟังก์ชันนี้ไม่มี Cache - Write Operation"""
-    if conn is None or df.empty:
+    """✅ บันทึกข้อมูลเข้า Supabase แบบ SQL INSERT (Append)"""
+    if conn_sb is None or df.empty:
         return False
+        
     try:
         logger.info(f"💾 บันทึก {tab}...")
-        existing = load_data(tab)
         
-        if tab.lower() == "income":
-            df['type'] = 'Income'
-            df['app'] = df['app'].apply(lambda x: "GrabFood" if "grab" in str(x).lower() 
+        table_map = {
+            "Income": "income",
+            "Expense": "expense",
+            "Monthly": "monthly",
+            "LM_Insight": "lineman_insight"
+        }
+        table_name = table_map.get(tab, tab.lower())
+        
+        save_df = df.copy()
+        save_df.columns = [str(c).strip().lower() for c in save_df.columns]
+        
+        if table_name == "income":
+            save_df['type'] = 'Income'
+            save_df['app'] = save_df['app'].apply(lambda x: "GrabFood" if "grab" in str(x).lower() 
                                        else ("LINE MAN" if "line" in str(x).lower() 
                                        else ("ShopeeFood" if "shopee" in str(x).lower() else x)))
+            if 'name' not in save_df.columns: save_df['name'] = save_df['app'] + " Daily Income"
+            if 'qty' not in save_df.columns: save_df['qty'] = 1
+            if 'unit' not in save_df.columns: save_df['unit'] = "วัน"
+            if 'total_price' not in save_df.columns: save_df['total_price'] = save_df['net_income']
             
-            if 'name' not in df.columns: df['name'] = df['app'] + " Daily Income"
-            if 'qty' not in df.columns: df['qty'] = 1
-            if 'unit' not in df.columns: df['unit'] = "วัน"
-            if 'total_price' not in df.columns: df['total_price'] = df['net_income']
-            if 'unit_price' not in df.columns: df['unit_price'] = df['net_income']
-            
-            cols_order = ['name', 'qty', 'unit', 'total_price', 'date', 'unit_price', 'app', 'net_income', 'gross_sales', 'gp_amount', 'type']
-            for col in cols_order:
-                if col not in df.columns: df[col] = ""
-            df = df[cols_order]
+            if 'date' in save_df.columns:
+                save_df['date'] = pd.to_datetime(save_df['date']).dt.date
+                
+        elif table_name == "expense":
+            save_df['type'] = 'Expense'
+            if "unit_price" in save_df.columns:
+                save_df = save_df.drop(columns=["unit_price"])
+            if 'date' in save_df.columns:
+                save_df['date'] = pd.to_datetime(save_df['date']).dt.date
+                
+        elif table_name == "lineman_insight":
+            if 'date' in save_df.columns and 'data' not in save_df.columns:
+                save_df['data'] = pd.to_datetime(save_df['date']).dt.date
+                save_df = save_df.drop(columns=["date"])
 
-        elif tab.lower() == "expense":
-            df['type'] = 'Expense'
-            df['unit_price'] = clean_numeric(df, 'total_price') / clean_numeric(df, 'qty').replace(0, 1)
+        # แปลงค่า NaN เป็น None สำหรับ SQL
+        save_df = save_df.where(pd.notnull(save_df), None)
 
-        final = pd.concat([existing, df], ignore_index=True)
-
-        if tab.lower() == "income":
-            final['date'] = pd.to_datetime(final['date']).dt.strftime('%Y-%m-%d')
-            final['net_income'] = pd.to_numeric(final['net_income']).round(2)
-            final = final.drop_duplicates(subset=['date', 'app', 'net_income'], keep='first')
-            final = final.sort_values(by='date', ascending=True) 
-        elif tab.lower() == "expense":
-            final = final.drop_duplicates(subset=['date', 'name', 'total_price'], keep='first')
-            final = final.sort_values(by='date', ascending=True)
-
-        target_sheet = "Income" if tab.lower() == "income" else ("Expense" if tab.lower() == "expense" else tab)
-        conn.update(worksheet=target_sheet, data=final)
+        save_df.to_sql(table_name, conn_sb.engine, if_exists='append', index=False, method='multi')
         
-        # ✅ ล้าง Cache หลังจากบันทึก
         st.cache_data.clear()
-        logger.info(f"✅ บันทึก {tab} สำเร็จ และล้าง Cache")
-        
+        logger.info(f"✅ บันทึก {table_name} ลง Cloud สำเร็จ!")
         return True
+
     except Exception as e:
-        logger.error(f"❌ บันทึก {tab} ล้มเหลว: {e}")
-        st.error(f"❌ บันทึกล้มเหลว: {e}")
+        if "unique constraint" in str(e).lower():
+            st.warning("⚠️ ข้อมูลนี้มีการบันทึกไว้ในระบบแล้ว (วันที่และแอปซ้ำกัน)")
+        else:
+            logger.error(f"❌ บันทึก {tab} ล้มเหลว: {e}")
+            st.error(f"❌ บันทึกล้มเหลว: {e}")
         return False
         
 def run_migration_process():
-    st.markdown("### 🛠️ ระบบย้ายข้อมูล (GSheets -> Supabase) ชุดสมบูรณ์")
+    st.markdown("### 🛠️ ระบบย้ายข้อมูล (GSheets -> Supabase)")
     
     if st.button("🚀 เริ่มย้ายข้อมูลทั้งหมด (4 แท็บ)", type="primary"):
         try:
-            conn_gs = st.connection("gsheets", type=GSheetsConnection)
-            conn_sb = st.connection("supabase", type="sql")
-
-            # รายชื่อแท็บใน Sheets : ชื่อตารางใน Supabase
             migration_plan = {
                 "Income": "income",
                 "Expense": "expense",
                 "Monthly": "monthly",
-                "LM_Insight": "lineman_insight" # หรือชื่อแท็บที่พี่ใช้เก็บข้อมูล LINE MAN
+                "LM_Insight": "lineman_insight"
             }
 
             for sheet_name, table_name in migration_plan.items():
                 with st.status(f"กำลังย้ายข้อมูลจาก {sheet_name}...", expanded=True) as status:
+                    if conn_gs is None:
+                        status.update(label=f"❌ ไม่สามารถเชื่อมต่อ Google Sheets ได้", state="error")
+                        continue
+                        
                     df = conn_gs.read(worksheet=sheet_name, ttl=0)
                     
                     if df is not None and not df.empty:
                         df.columns = [str(c).strip().lower() for c in df.columns]
                         
-                        # จัดการวันที่ (เฉพาะตารางที่มีวันที่ชัดเจน)
                         if 'date' in df.columns:
                             df['date'] = pd.to_datetime(df['date']).dt.date
 
-                        # ลบช่องที่ Database คำนวณเองออก (ป้องกัน Error GeneratedAlways)
                         if table_name == "expense" and "unit_price" in df.columns:
                             df = df.drop(columns=["unit_price"])
 
-                        # ล้างค่าว่างและตัวซ้ำเบื้องต้น
                         df = df.where(pd.notnull(df), None)
                         
-                        # ส่งเข้า Supabase
                         df.to_sql(table_name, conn_sb.engine, if_exists='append', index=False, method='multi')
                         status.update(label=f"✅ ย้าย {sheet_name} สำเร็จ! ({len(df)} แถว)", state="complete")
                     else:
-                        st.write(f"ℹ️ แท็บ {sheet_name} ไม่มีข้อมูลหรือหาไม่เจอ (ข้ามไปก่อน)")
+                        st.write(f"ℹ️ แท็บ {sheet_name} ไม่มีข้อมูลหรือหาไม่เจอ")
                         status.update(label=f"ข้าม {sheet_name}", state="complete")
 
             st.balloons()
@@ -357,6 +328,7 @@ def run_migration_process():
             
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาดระหว่างย้ายข้อมูล: {e}")
+
 # ============================================================
 # 5. AI FUNCTION
 # ============================================================
@@ -375,7 +347,6 @@ def process_extraction(data, p_type, is_bytes=False, mime=None, existing_names=N
         p = (f"สกัดข้อมูลรายจ่ายเป็น JSON: [{{'date': '{now_str}', 'name': 'สินค้า', "
              f"'qty': 1, 'unit': 'หน่วย', 'total_price': 0}}]. ใช้ชื่อเดิมถ้าคล้าย: [{names_str}]")
     elif p_type == "Insight":
-        # กฎใหม่สำหรับอ่านรูป LINE MAN Insight
         p = ("สกัดข้อมูลจากรูปภาพแอป LINE MAN Merchant เป็น JSON array: "
              "1. หากเป็นรูป 'อันดับสินค้าขายดี': [{'type': 'Menu', 'name': 'ชื่อเมนู', 'qty': จำนวน, 'amount': ยอดเงิน}] "
              "2. หากเป็นรูป 'สรุปยอดขาย/การตลาด': [{'type': 'Marketing', 'name': 'ชื่อรายการ (เช่น โฆษณา Listing, ใช้โปรโมชั่น)', 'qty': จำนวนครั้ง/ออเดอร์, 'amount': 0}] "
@@ -415,24 +386,20 @@ with st.sidebar:
     st.divider()
 
     page = st.radio("เมนูหลัก", 
-        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย","🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด",],
+        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย", "📧 Sync ยอดจาก Email", "🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด", "🛠️ Admin Migration"],
         label_visibility="collapsed")
 
     st.divider()
     
-    # ✅ ปุ่มรีเฟรช - ล้าง Cache และ Rerun
     if st.button("🔄 รีเฟรชข้อมูล", use_container_width=True):
         logger.info("🔄 ล้าง Cache และ Rerun...")
         st.cache_data.clear()
         st.rerun()
     
-    # ✅ Cache Status
     with st.expander("📊 Cache Status"):
         st.write("**Cache Information:**")
-        st.write(f"- Income Data: Cache 1 ชั่วโมง")
-        st.write(f"- Expense Data: Cache 1 ชั่วโมง")
-        st.write(f"- Monthly Data: Cache 1 ชั่วโมง")
-        st.write(f"- Connection: Cache ตลอดเซสชัน")
+        st.write("- All Data: Cache 10 นาที (SQL เร็วมาก)")
+        st.write("- Connection: Cache ตลอดเซสชัน")
         if st.button("ล้าง Cache ทั้งหมด"):
             logger.info("🗑️ ล้าง Cache ทั้งหมด...")
             st.cache_data.clear()
@@ -447,33 +414,25 @@ if page == "📊 Dashboard รายวัน":
     col_t, col_r = st.columns([4, 1])
     with col_t:
         st.markdown("<div class='page-title'>📊 Dashboard รายวัน</div>", unsafe_allow_html=True)
-        st.markdown("<div class='page-sub'>ภาพรวมรายรับ-รายจ่าย ทั้งหมดในชีต</div>", unsafe_allow_html=True)
+        st.markdown("<div class='page-sub'>ภาพรวมรายรับ-รายจ่าย ทั้งหมดบน Cloud DB</div>", unsafe_allow_html=True)
 
-    # ✅ ใช้ฟังก์ชันที่มี Cache
     df_i = load_income_data()
     df_e = load_expense_data()
 
     if not df_i.empty and 'net_income' in df_i.columns:
         df_i['net_income'] = clean_numeric(df_i, 'net_income')
-        if 'date' in df_i.columns:
-            df_i['date'] = pd.to_datetime(df_i['date'], errors='coerce')
-            
     if not df_e.empty and 'total_price' in df_e.columns:
         df_e['total_price'] = clean_numeric(df_e, 'total_price')
-        if 'date' in df_e.columns:
-            df_e['date'] = pd.to_datetime(df_e['date'], errors='coerce')
 
     t_inc = df_i['net_income'].sum() if not df_i.empty and 'net_income' in df_i.columns else 0
     t_exp = df_e['total_price'].sum() if not df_e.empty and 'total_price' in df_e.columns else 0
     profit = t_inc - t_exp
 
-    # คำนวณรายรับเฉพาะวันนี้
     today = pd.Timestamp.now().normalize()
     today_inc = 0
     if not df_i.empty and "date" in df_i.columns:
         today_inc = df_i[df_i["date"] >= today]["net_income"].sum()
 
-    # KPI 4 ช่อง
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💰 รายรับรวม", f"฿{t_inc:,.0f}")
     c2.metric("📦 รายจ่ายรวม", f"฿{t_exp:,.0f}")
@@ -482,7 +441,6 @@ if page == "📊 Dashboard รายวัน":
 
     st.divider()
 
-    # Tabs สำหรับกราฟ
     days = st.select_slider("ดูย้อนหลัง:", options=[7, 14, 30, 60, 90, 180, 365], value=30, format_func=lambda x: f"{x} วัน" if x < 365 else "1 ปี")
     cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
 
@@ -532,8 +490,11 @@ if page == "📊 Dashboard รายวัน":
         if not df_e.empty and 'name' in df_e.columns:
             item = st.selectbox("เลือกวัตถุดิบ:", sorted(df_e['name'].dropna().unique()))
             df_it = df_e[df_e['name'] == item].sort_values('date').copy()
-            qty = clean_numeric(df_it, 'qty').replace(0, 1)
-            df_it['unit_price'] = df_it['total_price'] / qty
+            
+            # ใช้ unit_price ที่มาจาก Cloud DB ได้เลย เพราะ Supabase คำนวณให้แล้ว
+            if 'unit_price' not in df_it.columns:
+                qty = clean_numeric(df_it, 'qty').replace(0, 1)
+                df_it['unit_price'] = df_it['total_price'] / qty
 
             if len(df_it) >= 2:
                 last, prev = df_it['unit_price'].iloc[-1], df_it['unit_price'].iloc[-2]
@@ -554,7 +515,6 @@ elif page == "📈 วิเคราะห์รายเดือน":
     st.markdown("<div class='page-title'>📈 วิเคราะห์รายเดือน</div>", unsafe_allow_html=True)
     st.markdown("<div class='page-sub'>เปรียบเทียบ Gross vs Net · ค่า GP · แนวโน้ม</div>", unsafe_allow_html=True)
 
-    # ✅ ใช้ฟังก์ชันที่มี Cache
     df_m = load_monthly_data()
 
     if not df_m.empty:
@@ -606,7 +566,7 @@ elif page == "📈 วิเคราะห์รายเดือน":
         st.info("ยังไม่มีข้อมูลรายเดือน — บันทึกสรุปรายเดือนก่อนครับ")
         
 # ============================================================
-# 9. PAGE — บันทึกรายรับ (แก้ไขระบบถ่ายรูป/อัดเสียง และความจำข้อมูล)
+# 9. PAGE — บันทึกรายรับ (มี AI)
 # ============================================================
 elif page == "💰 บันทึกรายรับ":
     st.markdown("<div class='page-title'>💰 บันทึกรายรับ</div>", unsafe_allow_html=True)
@@ -615,12 +575,10 @@ elif page == "💰 บันทึกรายรับ":
     rtype = st.radio("ประเภทรายรับ:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"], horizontal=True)
     method = st.radio("วิธีบันทึก:", ["📷 ถ่ายรูปหน้าจอสรุปยอด", "🎙️ พูดบันทึกยอดขาย", "⌨️ พิมพ์เอง", "🖼️ อัปโหลดรูป"], horizontal=True)
 
-    # --- ส่วนที่ 1: การรับค่าและสกัดข้อมูล (Input) ---
     res_raw = None
     
     if method == "📷 ถ่ายรูปหน้าจอสรุปยอด":
         st.info("💡 กดเปิดสวิตช์ด้านล่างเมื่อพร้อมถ่ายรูป")
-        # เพิ่มสวิตช์เปิดปิดกล้อง
         if st.toggle("📸 เปิดใช้งานกล้องถ่ายรูป"):
             img_cam = st.camera_input("📸 ถ่ายรูปหน้าจอเครื่อง POS หรือมือถือที่สรุปยอด")
             if img_cam and st.button("🪄 สกัดยอดจากรูป", type="primary"):
@@ -643,26 +601,22 @@ elif page == "💰 บันทึกรายรับ":
         if img_file and st.button("🪄 วิเคราะห์จากไฟล์", type="primary"):
             res_raw = process_extraction(img_file.read(), rtype, is_bytes=True, mime="image/jpeg")
 
-    # --- ส่วนที่ 2: ใช้ Session State เก็บข้อมูลไว้ (กันข้อมูลหาย) ---
     if res_raw:
         st.session_state.tmp_inc_data = pd.DataFrame(res_raw)
         st.success(f"✅ AI พบข้อมูลรายรับ {len(res_raw)} รายการ")
 
-    # --- ส่วนที่ 3: แสดงตารางแก้ไขและปุ่มบันทึก ---
     if 'tmp_inc_data' in st.session_state and not st.session_state.tmp_inc_data.empty:
         st.markdown("<div class='section-title'>✏️ ตรวจสอบรายรับก่อนลงบัญชี</div>", unsafe_allow_html=True)
         
-        # ตารางตรวจสอบข้อมูล (11 คอลัมน์จะถูกจัดการอัตโนมัติในฟังก์ชัน save_to_tab)
         edited_df = st.data_editor(st.session_state.tmp_inc_data, use_container_width=True, num_rows="dynamic")
         
         c1, c2 = st.columns([1, 4])
         with c1:
-            if st.button("💾 บันทึกลง Sheets", type="primary"):
+            if st.button("💾 บันทึกลง Cloud", type="primary"):
                 with st.spinner("กำลังบันทึกรายรับ..."):
                     if save_to_tab(edited_df, "Income"):
                         st.success("✅ บันทึกรายรับร้าน @304 สำเร็จ!")
-                        del st.session_state.tmp_inc_data # ล้างข้อมูลหลังเซฟ
-                        st.cache_data.clear() # อัปเดต Dashboard ทันที
+                        del st.session_state.tmp_inc_data
                         st.rerun()
         with c2:
             if st.button("🗑️ ล้างข้อมูล"):
@@ -670,7 +624,7 @@ elif page == "💰 บันทึกรายรับ":
                 st.rerun()
 
 # ============================================================
-# 10. PAGE — บันทึกรายจ่าย (แก้ไขระบบความจำข้อมูลสกัด)
+# 10. PAGE — บันทึกรายจ่าย (มี AI)
 # ============================================================
 elif page == "💸 บันทึกรายจ่าย":
     st.markdown("<div class='page-title'>💸 บันทึกรายจ่าย</div>", unsafe_allow_html=True)
@@ -678,16 +632,13 @@ elif page == "💸 บันทึกรายจ่าย":
 
     method = st.radio("เลือกวิธีบันทึก:", ["📷 ถ่ายรูปใบเสร็จ", "🎙️ พูดบันทึกเสียง", "⌨️ พิมพ์เอง", "🖼️ อัปโหลดรูป"], horizontal=True)
 
-    # ดึงชื่อสินค้าเดิมที่มีในชีต
     df_exp_db = load_expense_data()
     existing_names = df_exp_db['name'].unique().tolist() if not df_exp_db.empty else []
 
-    # --- ส่วนที่ 1: การสกัดข้อมูล (Input) ---
     res_raw = None
     
     if method == "📷 ถ่ายรูปใบเสร็จ":
         st.info("💡 กดเปิดสวิตช์ด้านล่างเมื่อพร้อมถ่ายรูป")
-        # เพิ่มสวิตช์เปิดปิดกล้อง
         if st.toggle("📸 เปิดใช้งานกล้องถ่ายรูป"):
             img_cam = st.camera_input("📸 เล็งไปที่ใบเสร็จ")
             if img_cam and st.button("🪄 สกัดข้อมูลจากรูป", type="primary"):
@@ -710,92 +661,61 @@ elif page == "💸 บันทึกรายจ่าย":
         if img_file and st.button("🪄 วิเคราะห์จากไฟล์", type="primary"):
             res_raw = process_extraction(img_file.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_names)
 
-    # --- ส่วนที่ 2: จัดเก็บข้อมูลลง Session State เพื่อไม่ให้หายตอนกดเซฟ ---
     if res_raw:
         st.session_state.tmp_exp_data = pd.DataFrame(res_raw)
         st.success(f"✅ AI สกัดได้ {len(res_raw)} รายการ")
 
-    # --- ส่วนที่ 3: แสดงตารางแก้ไขและปุ่มบันทึก ---
     if 'tmp_exp_data' in st.session_state and not st.session_state.tmp_exp_data.empty:
         st.markdown("<div class='section-title'>✏️ ตรวจสอบข้อมูลก่อนบันทึก</div>", unsafe_allow_html=True)
         
-        # แสดงตารางให้พี่แก้ไขได้
         edited_df = st.data_editor(st.session_state.tmp_exp_data, use_container_width=True, num_rows="dynamic")
         
         c1, c2 = st.columns([1, 4])
         with c1:
-            if st.button("💾 ยืนยันบันทึก", type="primary"):
-                with st.spinner("กำลังส่งข้อมูลลง Sheets..."):
-                    # ส่งข้อมูลที่แก้ไขแล้วไปเซฟ
-                    success = save_to_tab(edited_df, "Expense")
-                    if success:
+            if st.button("💾 ยืนยันบันทึกลง Cloud", type="primary"):
+                with st.spinner("กำลังส่งข้อมูล..."):
+                    if save_to_tab(edited_df, "Expense"):
                         st.success("✅ บันทึกสำเร็จ!")
-                        del st.session_state.tmp_exp_data # ล้างข้อมูลชั่วคราวออก
-                        st.cache_data.clear() # ล้างแคชเพื่อให้ตารางอัปเดตทันที
+                        del st.session_state.tmp_exp_data
                         st.rerun()
         with c2:
             if st.button("🗑️ ล้างรายการ"):
                 del st.session_state.tmp_exp_data
                 st.rerun()
 
+# ============================================================
+# 11. PAGE — SYNC EMAIL
+# ============================================================
+elif page == "📧 Sync ยอดจาก Email":
+    st.markdown("<div class='page-title'>📧 Sync ยอดเดลิเวอรี่จาก Email</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>นำข้อมูลที่ Apps Script รวบรวมไว้ มาบันทึกลงฐานข้อมูลหลัก (Supabase)</div>", unsafe_allow_html=True)
+    
+    if st.button("🔄 โหลดข้อมูลใหม่จาก Email (ผ่าน Sheets)"):
+        try:
+            if conn_gs is None:
+                st.error("❌ เชื่อมต่อ Google Sheets ไม่สำเร็จ ไม่สามารถดึงข้อมูลได้")
+            else:
+                # แก้ไขชื่อแท็บตรงนี้ได้ ถ้า Apps Script ของพี่เขียนลงแท็บอื่น (เช่น 'Gmail_Extract')
+                df_gmail = conn_gs.read(worksheet="Income", ttl=0) 
+                if not df_gmail.empty:
+                    st.write("📊 ตัวอย่างข้อมูลล่าสุดที่พบ:")
+                    st.dataframe(df_gmail.tail(5))
+                    st.session_state.df_email_sync = df_gmail
+                else:
+                    st.info("📭 ไม่พบข้อมูลใหม่ใน Sheets")
+        except Exception as e:
+            st.error(f"❌ โหลดข้อมูลล้มเหลว: {e}")
+            
+    if 'df_email_sync' in st.session_state:
+        if st.button("🚀 ยืนยันนำข้อมูลเข้า Cloud Database", type="primary"):
+            with st.spinner("กำลังย้ายข้อมูลเข้า Supabase..."):
+                if save_to_tab(st.session_state.df_email_sync, "Income"):
+                    st.success("ย้ายข้อมูลสำเร็จ! ข้อมูลเข้าไปรวมใน Dashboard แล้วครับ")
+                    del st.session_state.df_email_sync
+                    st.rerun()
 
 # ============================================================
-# 11. PAGE — AI AGENT
-# ============================================================
-elif page == "🤖 AI Agent":
-    st.markdown("<div class='page-title'>🤖 AI Agent</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>ตัวช่วย AI สำหรับวิเคราะห์ข้อมูล</div>", unsafe_allow_html=True)
-
-    # ✅ ใช้ฟังก์ชันที่มี Cache
-    df_i = load_income_data()
-    df_e = load_expense_data()
-
-    if not df_i.empty or not df_e.empty:
-        st.info("🤖 AI Agent - ยังไม่พร้อมใช้งานในเวอร์ชันนี้")
-        st.write("ฟีเจอร์นี้จะช่วยให้คุณสามารถสอบถาม AI เกี่ยวกับข้อมูลของคุณได้")
-    else:
-        st.warning("⚠️ ยังไม่มีข้อมูล - บันทึกข้อมูลรายรับ/รายจ่ายก่อนครับ")
-
-# ============================================================
-# 12. PAGE — ข้อมูลทั้งหมด
-# ============================================================
-elif page == "📋 ข้อมูลทั้งหมด":
-    st.markdown("<div class='page-title'>📋 ข้อมูลทั้งหมด</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>ดูข้อมูลทั้งหมดจากทุก Sheet</div>", unsafe_allow_html=True)
-
-    # ✅ ใช้ฟังก์ชันที่มี Cache
-    df_i = load_income_data()
-    df_e = load_expense_data()
-    df_m = load_monthly_data()
-
-    tab1, tab2, tab3 = st.tabs(["📊 Income", "📦 Expense", "📅 Monthly"])
-
-    with tab1:
-        st.markdown("<div class='section-title'>📊 ข้อมูลรายรับ</div>", unsafe_allow_html=True)
-        if not df_i.empty:
-            st.dataframe(df_i, use_container_width=True)
-        else:
-            st.info("ยังไม่มีข้อมูลรายรับ")
-
-    with tab2:
-        st.markdown("<div class='section-title'>📦 ข้อมูลรายจ่าย</div>", unsafe_allow_html=True)
-        if not df_e.empty:
-            st.dataframe(df_e, use_container_width=True)
-        else:
-            st.info("ยังไม่มีข้อมูลรายจ่าย")
-
-    with tab3:
-        st.markdown("<div class='section-title'>📅 ข้อมูลรายเดือน</div>", unsafe_allow_html=True)
-        if not df_m.empty:
-            st.dataframe(df_m, use_container_width=True)
-        else:
-            st.info("ยังไม่มีข้อมูลรายเดือน")
-
-if page == "🛠️ Admin Migration":
-    run_migration_process()
-
-# ============================================================
-# 13. PAGE — LINE MAN INSIGHT (วิเคราะห์เมนู + การตลาด)
+# 12. PAGE — LINE MAN INSIGHT
 # ============================================================
 elif page == "🎯 LINE MAN Insight":
     st.markdown("<div class='page-title'>🎯 LINE MAN Insight</div>", unsafe_allow_html=True)
@@ -803,12 +723,10 @@ elif page == "🎯 LINE MAN Insight":
 
     method = st.radio("วิธีอัปโหลดข้อมูล:", ["📷 ถ่ายรูปสด/อัปโหลดรูป", "⌨️ วางข้อความ"], horizontal=True)
 
-    # 1. การรับข้อมูล (Input)
-    res_insight = [] # เปลี่ยนเป็น List เพื่อเก็บข้อมูลจากหลายๆ รูป
+    res_insight = [] 
     
     if method == "📷 ถ่ายรูปสด/อัปโหลดรูป":
         img_cam = None
-        # เพิ่มสวิตช์สำหรับเปิดกล้องแยกต่างหาก
         if st.toggle("📸 เปิดใช้งานกล้องเพื่อถ่ายรูปสด"):
             img_cam = st.camera_input("📸 ถ่ายรูปสด")
             
@@ -839,7 +757,6 @@ elif page == "🎯 LINE MAN Insight":
                 st.session_state.tmp_insight = pd.DataFrame(res)
                 st.success(f"✅ AI วิเคราะห์สำเร็จ ได้ข้อมูล {len(res)} รายการ")
 
-    # 2. จัดการข้อมูลใหม่ก่อนเซฟ (ตารางตรวจสอบ)
     if 'tmp_insight' in st.session_state and not st.session_state.tmp_insight.empty:
         st.write("✏️ ตรวจสอบข้อมูลก่อนบันทึก:")
         edited_insight = st.data_editor(st.session_state.tmp_insight, use_container_width=True, num_rows="dynamic")
@@ -850,7 +767,6 @@ elif page == "🎯 LINE MAN Insight":
                 if save_to_tab(edited_insight, "LM_Insight"):
                     st.success("บันทึกข้อมูล LINE MAN Insight สำเร็จ!")
                     del st.session_state.tmp_insight
-                    st.cache_data.clear()
                     st.rerun()
         with c2:
             if st.button("🗑️ ล้างรายการ"):
@@ -859,11 +775,9 @@ elif page == "🎯 LINE MAN Insight":
 
     st.divider()
 
-    # 3. การแสดงผลวิเคราะห์ (Analytics) จากฐานข้อมูล
     df_insight_db = load_data("LM_Insight") 
 
     if not df_insight_db.empty and 'type' in df_insight_db.columns:
-        # ส่วนที่ 1: วิเคราะห์เมนูขายดี
         st.markdown("<div class='section-title'>🍜 อันดับเมนูขายดี (สะสม)</div>", unsafe_allow_html=True)
         df_menu = df_insight_db[df_insight_db['type'] == 'Menu'].copy()
         if not df_menu.empty:
@@ -880,14 +794,12 @@ elif page == "🎯 LINE MAN Insight":
                 best_item = top_menu.iloc[0]['name']
                 st.info(f"**💡 AI แนะนำ:**\nสินค้าที่ขายดีที่สุดคือ **'{best_item}'** ควรเน้นเตรียมสต็อกวัตถุดิบสำหรับเมนูนี้เป็นพิเศษครับ")
 
-        # ส่วนที่ 2: วิเคราะห์โฆษณา
         st.markdown("<div class='section-title'>📈 ประสิทธิภาพโฆษณาและโปรโมชั่น</div>", unsafe_allow_html=True)
         df_mkt = df_insight_db[df_insight_db['type'] == 'Marketing'].copy()
         if not df_mkt.empty:
             df_mkt['qty'] = pd.to_numeric(df_mkt['qty'], errors='coerce').fillna(0)
             mkt_stats = df_mkt.groupby('name')['qty'].sum().reset_index()
             
-            # กรองคำคร่าวๆ
             ad_orders = mkt_stats[mkt_stats['name'].str.contains("โฆษณา|Listing", na=False)]['qty'].sum()
             promo_use = mkt_stats[mkt_stats['name'].str.contains("โปรโมชั่น|ส่วนลด", na=False)]['qty'].sum()
             
@@ -895,3 +807,56 @@ elif page == "🎯 LINE MAN Insight":
             m1.metric("🎯 ออเดอร์จากโฆษณา (Listing)", f"{ad_orders:,.0f} รายการ")
             m2.metric("🎁 จำนวนการใช้โปรโมชั่น", f"{promo_use:,.0f} ครั้ง")
             st.caption("เทียบจำนวนนี้กับยอดขายรวม เพื่อดูว่าคุ้มค่าโฆษณาที่จ่ายไปหรือไม่ครับ")
+
+# ============================================================
+# 13. PAGE — AI AGENT
+# ============================================================
+elif page == "🤖 AI Agent":
+    st.markdown("<div class='page-title'>🤖 AI Agent</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>ตัวช่วย AI สำหรับวิเคราะห์ข้อมูล</div>", unsafe_allow_html=True)
+
+    df_i = load_income_data()
+    df_e = load_expense_data()
+
+    if not df_i.empty or not df_e.empty:
+        st.info("🤖 AI Agent - ยังไม่พร้อมใช้งานในเวอร์ชันนี้")
+        st.write("ฟีเจอร์นี้จะช่วยให้คุณสามารถสอบถาม AI เกี่ยวกับข้อมูลของคุณได้")
+    else:
+        st.warning("⚠️ ยังไม่มีข้อมูล - บันทึกข้อมูลรายรับ/รายจ่ายก่อนครับ")
+
+# ============================================================
+# 14. PAGE — ข้อมูลทั้งหมด & MIGRATION
+# ============================================================
+elif page == "📋 ข้อมูลทั้งหมด":
+    st.markdown("<div class='page-title'>📋 ฐานข้อมูล Cloud ทั้งหมด</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>ดูข้อมูลทั้งหมดจาก Supabase Database</div>", unsafe_allow_html=True)
+
+    df_i = load_income_data()
+    df_e = load_expense_data()
+    df_m = load_monthly_data()
+    df_insight = load_data("LM_Insight")
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Income", "📦 Expense", "📅 Monthly", "🎯 Insight"])
+
+    with tab1:
+        st.markdown("<div class='section-title'>📊 ข้อมูลรายรับ</div>", unsafe_allow_html=True)
+        if not df_i.empty: st.dataframe(df_i, use_container_width=True)
+        else: st.info("ยังไม่มีข้อมูลรายรับ")
+
+    with tab2:
+        st.markdown("<div class='section-title'>📦 ข้อมูลรายจ่าย</div>", unsafe_allow_html=True)
+        if not df_e.empty: st.dataframe(df_e, use_container_width=True)
+        else: st.info("ยังไม่มีข้อมูลรายจ่าย")
+
+    with tab3:
+        st.markdown("<div class='section-title'>📅 ข้อมูลรายเดือน</div>", unsafe_allow_html=True)
+        if not df_m.empty: st.dataframe(df_m, use_container_width=True)
+        else: st.info("ยังไม่มีข้อมูลรายเดือน")
+        
+    with tab4:
+        st.markdown("<div class='section-title'>🎯 ข้อมูล LINE MAN Insight</div>", unsafe_allow_html=True)
+        if not df_insight.empty: st.dataframe(df_insight, use_container_width=True)
+        else: st.info("ยังไม่มีข้อมูล Insight")
+
+elif page == "🛠️ Admin Migration":
+    run_migration_process()
