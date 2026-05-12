@@ -745,7 +745,7 @@ elif page == "📋 ข้อมูลทั้งหมด":
         else:
             st.info("ยังไม่มีข้อมูลรายเดือน")
 
-elif page == "🛠️ Admin Migration":
+if page == "🛠️ Admin Migration":
     run_migration_process()
 
 # ============================================================
