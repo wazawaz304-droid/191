@@ -310,6 +310,59 @@ def save_to_tab(df, tab):
         logger.error(f"❌ บันทึก {tab} ล้มเหลว: {e}")
         st.error(f"❌ บันทึกล้มเหลว: {e}")
         return False
+        
+def run_migration_process():
+    st.markdown("### 🛠️ ระบบย้ายข้อมูล (GSheets -> Supabase)")
+    st.warning("คำเตือน: กรุณากดรันเพียงครั้งเดียว เพื่อป้องกันข้อมูลซ้ำซ้อน")
+
+    if st.button("🚀 เริ่มการย้ายข้อมูลทันที", type="primary"):
+        try:
+            # 1. สร้างการเชื่อมต่อกับทั้งสองระบบ
+            # ใช้ st.connection ตัวเดิมที่พี่มีอยู่
+            conn_gs = st.connection("gsheets", type=GSheetsConnection)
+            conn_sb = st.connection("supabase", type="sql")
+
+            # 2. รายชื่อแท็บที่ต้องการย้าย และชื่อตารางปลายทาง
+            migration_plan = {
+                "Income": "income",
+                "Expense": "expense"
+                # ถ้ามีแท็บอื่นเพิ่ม สามารถใส่ต่อได้ครับ
+            }
+
+            for sheet_name, table_name in migration_plan.items():
+                with st.status(f"กำลังย้ายข้อมูลจาก {sheet_name}...", expanded=True) as status:
+                    # ดึงข้อมูลจาก Google Sheets
+                    df = conn_gs.read(worksheet=sheet_name, ttl=0)
+                    
+                    if df is not None and not df.empty:
+                        # ทำความสะอาดหัวคอลัมน์ให้เป็นตัวเล็กและไม่มีช่องว่าง (ตามที่ SQL ต้องการ)
+                        df.columns = [str(c).strip().lower() for c in df.columns]
+                        
+                        # จัดการเรื่องวันที่ (SQL ชอบรูปแบบ YYYY-MM-DD)
+                        if 'date' in df.columns:
+                            df['date'] = pd.to_datetime(df['date']).dt.date
+
+                        # เคลียร์ข้อมูลที่เป็น NaN/None ให้เป็นค่าที่ SQL รับได้
+                        df = df.where(pd.notnull(df), None)
+
+                        # 3. ยิงข้อมูลเข้า Supabase
+                        # if_exists='append' คือการเอาข้อมูลไปต่อท้าย
+                        df.to_sql(
+                            table_name, 
+                            conn_sb.engine, 
+                            if_exists='append', 
+                            index=False,
+                            method='multi' # ช่วยให้ย้ายข้อมูลชุดใหญ่ได้เร็วขึ้น
+                        )
+                        status.update(label=f"✅ ย้าย {sheet_name} สำเร็จ! ({len(df)} แถว)", state="complete")
+                    else:
+                        status.update(label=f"❓ ไม่พบข้อมูลในแท็บ {sheet_name}", state="error")
+
+            st.balloons()
+            st.success("🎉 กระบวนการย้ายข้อมูลทั้งหมดเสร็จสมบูรณ์แล้วครับพี่!")
+            
+        except Exception as e:
+            st.error(f"❌ เกิดข้อผิดพลาดระหว่างย้ายข้อมูล: {e}")
 
 # ============================================================
 # 5. AI FUNCTION
@@ -850,55 +903,3 @@ elif page == "🎯 LINE MAN Insight":
             m2.metric("🎁 จำนวนการใช้โปรโมชั่น", f"{promo_use:,.0f} ครั้ง")
             st.caption("เทียบจำนวนนี้กับยอดขายรวม เพื่อดูว่าคุ้มค่าโฆษณาที่จ่ายไปหรือไม่ครับ")
 
-def run_migration_process():
-    st.markdown("### 🛠️ ระบบย้ายข้อมูล (GSheets -> Supabase)")
-    st.warning("คำเตือน: กรุณากดรันเพียงครั้งเดียว เพื่อป้องกันข้อมูลซ้ำซ้อน")
-
-    if st.button("🚀 เริ่มการย้ายข้อมูลทันที", type="primary"):
-        try:
-            # 1. สร้างการเชื่อมต่อกับทั้งสองระบบ
-            # ใช้ st.connection ตัวเดิมที่พี่มีอยู่
-            conn_gs = st.connection("gsheets", type=GSheetsConnection)
-            conn_sb = st.connection("supabase", type="sql")
-
-            # 2. รายชื่อแท็บที่ต้องการย้าย และชื่อตารางปลายทาง
-            migration_plan = {
-                "Income": "income",
-                "Expense": "expense"
-                # ถ้ามีแท็บอื่นเพิ่ม สามารถใส่ต่อได้ครับ
-            }
-
-            for sheet_name, table_name in migration_plan.items():
-                with st.status(f"กำลังย้ายข้อมูลจาก {sheet_name}...", expanded=True) as status:
-                    # ดึงข้อมูลจาก Google Sheets
-                    df = conn_gs.read(worksheet=sheet_name, ttl=0)
-                    
-                    if df is not None and not df.empty:
-                        # ทำความสะอาดหัวคอลัมน์ให้เป็นตัวเล็กและไม่มีช่องว่าง (ตามที่ SQL ต้องการ)
-                        df.columns = [str(c).strip().lower() for c in df.columns]
-                        
-                        # จัดการเรื่องวันที่ (SQL ชอบรูปแบบ YYYY-MM-DD)
-                        if 'date' in df.columns:
-                            df['date'] = pd.to_datetime(df['date']).dt.date
-
-                        # เคลียร์ข้อมูลที่เป็น NaN/None ให้เป็นค่าที่ SQL รับได้
-                        df = df.where(pd.notnull(df), None)
-
-                        # 3. ยิงข้อมูลเข้า Supabase
-                        # if_exists='append' คือการเอาข้อมูลไปต่อท้าย
-                        df.to_sql(
-                            table_name, 
-                            conn_sb.engine, 
-                            if_exists='append', 
-                            index=False,
-                            method='multi' # ช่วยให้ย้ายข้อมูลชุดใหญ่ได้เร็วขึ้น
-                        )
-                        status.update(label=f"✅ ย้าย {sheet_name} สำเร็จ! ({len(df)} แถว)", state="complete")
-                    else:
-                        status.update(label=f"❓ ไม่พบข้อมูลในแท็บ {sheet_name}", state="error")
-
-            st.balloons()
-            st.success("🎉 กระบวนการย้ายข้อมูลทั้งหมดเสร็จสมบูรณ์แล้วครับพี่!")
-            
-        except Exception as e:
-            st.error(f"❌ เกิดข้อผิดพลาดระหว่างย้ายข้อมูล: {e}")
