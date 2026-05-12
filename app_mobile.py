@@ -11,79 +11,6 @@ from datetime import datetime, timedelta
 import difflib
 import logging
 
-
-# --- 1. การเชื่อมต่อฐานข้อมูล (วางต่อจาก Imports) ---
-conn = st.connection("supabase", type="sql")
-
-@st.cache_data(ttl=600) # แคชข้อมูลไว้ 10 นาทีเพื่อความเร็ว
-def load_data_sql(table_name):
-    """✅ โหลดข้อมูลจาก Supabase โดยเรียงวันที่ล่าสุดขึ้นก่อน"""
-    if conn is None:
-        return pd.DataFrame()
-    try:
-        # สั่งดึงข้อมูลทั้งหมดจากตารางที่ระบุ และเรียงลำดับวันที่จากใหม่ไปเก่า
-        # หมายเหตุ: ตาราง lineman_insight อาจจะใช้คอลัมน์ 'data' แทน 'date' ตามที่ย้ายไปล่าสุด
-        date_col = "data" if table_name == "lineman_insight" else "date"
-        
-        query = f"SELECT * FROM {table_name} ORDER BY {date_col} DESC"
-        df = conn.query(query)
-        
-        # แปลงคอลัมน์วันที่ให้เป็น datetime ของ pandas เพื่อให้แสดงผลและทำกราฟง่าย
-        if date_col in df.columns:
-            df[date_col] = pd.to_datetime(df[date_col])
-            
-        return df
-    except Exception as e:
-        st.error(f"❌ ไม่สามารถโหลดข้อมูลจาก {table_name}: {e}")
-        return pd.DataFrame()
-
-def save_to_supabase(df, tab_name):
-    """✅ บันทึกข้อมูลใหม่เข้า Supabase แบบต่อท้าย (Append)"""
-    if conn is None or df.empty:
-        return False
-        
-    try:
-        # 1. ปรับชื่อตารางให้เป็นตัวเล็กทั้งหมดตามมาตรฐาน SQL
-        table_name = tab_name.lower()
-        
-        # 2. ทำความสะอาดข้อมูลก่อนบันทึก
-        save_df = df.copy()
-        
-        # ปรับชื่อคอลัมน์ให้เป็นตัวเล็กและไม่มีช่องว่าง
-        save_df.columns = [str(c).strip().lower() for c in save_df.columns]
-        
-        # จัดการฟอร์แมตวันที่ให้ถูกต้อง
-        date_col = "data" if table_name == "lineman_insight" else "date"
-        if date_col in save_df.columns:
-            save_df[date_col] = pd.to_datetime(save_df[date_col]).dt.date
-
-        # 🚩 จุดสำคัญ: ถ้าเป็นตารางรายจ่าย ต้องลบ unit_price ออก 
-        # เพราะเราตั้งให้ Supabase คำนวณ (total_price / qty) ให้เองอัตโนมัติ
-        if table_name == "expense" and "unit_price" in save_df.columns:
-            save_df = save_df.drop(columns=["unit_price"])
-
-        # 3. ยิงข้อมูลเข้าฐานข้อมูล
-        # ใช้ if_exists='append' เพื่อเพิ่มข้อมูลต่อท้ายรายการเดิม
-        save_df.to_sql(
-            table_name, 
-            conn.engine, 
-            if_exists='append', 
-            index=False, 
-            method='multi'
-        )
-        
-        # 4. ล้าง Cache ของ Streamlit เพื่อให้หน้า Dashboard อัปเดตตัวเลขล่าสุดทันที
-        st.cache_data.clear()
-        
-        return True
-    except Exception as e:
-        # ถ้าติดเรื่องข้อมูลซ้ำ (Unique Violation) ระบบจะแจ้งเตือนตรงนี้
-        if "unique constraint" in str(e).lower():
-            st.warning("⚠️ ไม่สามารถบันทึกได้: มีข้อมูลของวันที่และแอปนี้อยู่ในระบบแล้ว")
-        else:
-            st.error(f"❌ เกิดข้อผิดพลาดในการบันทึก: {e}")
-        return False
-
 # ============================================================
 # 0. LOGGING SETUP
 # ============================================================
@@ -253,26 +180,39 @@ client = get_gemini_client()
 # ============================================================
 
 @st.cache_data(ttl=3600)
-# แก้ไขฟังก์ชันโหลดข้อมูลใน Section 3
-@st.cache_data(ttl=600) # ลดเวลา Cache เหลือ 10 นาที เพราะ SQL ดึงเร็วมาก
 def load_income_data():
-    if conn is None: return pd.DataFrame()
+    """✅ @st.cache_data - Cache Income Data (1 ชั่วโมง)"""
+    logger.info("📥 โหลด Income Data...")
+    if conn is None:
+        return pd.DataFrame()
     try:
-        # ดึงข้อมูลจาก SQL และเรียงวันที่ใหม่ล่าสุดขึ้นก่อน
-        query = "SELECT * FROM income ORDER BY date DESC"
-        return conn.query(query)
+        df = conn.read(worksheet="Income", ttl=0)
+        if df is not None:
+            df.columns = [str(c).strip().lower() for c in df.columns]
+            result = df.dropna(how='all')
+            logger.info(f"✅ โหลด Income Data สำเร็จ ({len(result)} แถว)")
+            return result
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error loading income: {e}")
+        logger.error(f"❌ โหลด Income Data ล้มเหลว: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def load_expense_data():
-    if conn is None: return pd.DataFrame()
+    """✅ @st.cache_data - Cache Expense Data (1 ชั่วโมง)"""
+    logger.info("📥 โหลด Expense Data...")
+    if conn is None:
+        return pd.DataFrame()
     try:
-        query = "SELECT * FROM expense ORDER BY date DESC"
-        return conn.query(query)
+        df = conn.read(worksheet="Expense", ttl=0)
+        if df is not None:
+            df.columns = [str(c).strip().lower() for c in df.columns]
+            result = df.dropna(how='all')
+            logger.info(f"✅ โหลด Expense Data สำเร็จ ({len(result)} แถว)")
+            return result
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error loading expense: {e}")
+        logger.error(f"❌ โหลด Expense Data ล้มเหลว: {e}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
@@ -510,8 +450,8 @@ if page == "📊 Dashboard รายวัน":
         st.markdown("<div class='page-sub'>ภาพรวมรายรับ-รายจ่าย ทั้งหมดในชีต</div>", unsafe_allow_html=True)
 
     # ✅ ใช้ฟังก์ชันที่มี Cache
-    df_income = load_data_sql("income")
-    df_expense = load_data_sql("expense")
+    df_i = load_income_data()
+    df_e = load_expense_data()
 
     if not df_i.empty and 'net_income' in df_i.columns:
         df_i['net_income'] = clean_numeric(df_i, 'net_income')
@@ -715,15 +655,19 @@ elif page == "💰 บันทึกรายรับ":
         # ตารางตรวจสอบข้อมูล (11 คอลัมน์จะถูกจัดการอัตโนมัติในฟังก์ชัน save_to_tab)
         edited_df = st.data_editor(st.session_state.tmp_inc_data, use_container_width=True, num_rows="dynamic")
         
-    if st.button("บันทึกข้อมูล"):
-    new_data = pd.DataFrame([{ "date": date, "app": app, ... }])
-    
-    # ❌ ของเดิม: success = save_to_tab(new_data, "Income")
-    # ✅ ของใหม่:
-    success = save_to_supabase(new_data, "income")
-    
-    if success:
-        st.success("บันทึกเข้า Cloud เรียบร้อย!")
+        c1, c2 = st.columns([1, 4])
+        with c1:
+            if st.button("💾 บันทึกลง Sheets", type="primary"):
+                with st.spinner("กำลังบันทึกรายรับ..."):
+                    if save_to_tab(edited_df, "Income"):
+                        st.success("✅ บันทึกรายรับร้าน @304 สำเร็จ!")
+                        del st.session_state.tmp_inc_data # ล้างข้อมูลหลังเซฟ
+                        st.cache_data.clear() # อัปเดต Dashboard ทันที
+                        st.rerun()
+        with c2:
+            if st.button("🗑️ ล้างข้อมูล"):
+                del st.session_state.tmp_inc_data
+                st.rerun()
 
 # ============================================================
 # 10. PAGE — บันทึกรายจ่าย (แก้ไขระบบความจำข้อมูลสกัด)
@@ -951,4 +895,3 @@ elif page == "🎯 LINE MAN Insight":
             m1.metric("🎯 ออเดอร์จากโฆษณา (Listing)", f"{ad_orders:,.0f} รายการ")
             m2.metric("🎁 จำนวนการใช้โปรโมชั่น", f"{promo_use:,.0f} ครั้ง")
             st.caption("เทียบจำนวนนี้กับยอดขายรวม เพื่อดูว่าคุ้มค่าโฆษณาที่จ่ายไปหรือไม่ครับ")
-
