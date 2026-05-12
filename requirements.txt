@@ -5,3 +5,5 @@ plotly
 beautifulsoup4
 google-genai
 st-gsheets-connection
+sqlalchemy
+psycopg2-binary
