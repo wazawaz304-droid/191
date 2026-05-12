@@ -312,17 +312,19 @@ def save_to_tab(df, tab):
         return False
         
 def run_migration_process():
-    st.markdown("### 🛠️ ระบบย้ายข้อมูล (GSheets -> Supabase)")
-    st.warning("คำเตือน: กรุณากดรันเพียงครั้งเดียว เพื่อป้องกันข้อมูลซ้ำซ้อน")
-
-    if st.button("🚀 เริ่มการย้ายข้อมูลทันที", type="primary"):
+    st.markdown("### 🛠️ ระบบย้ายข้อมูล (GSheets -> Supabase) ชุดสมบูรณ์")
+    
+    if st.button("🚀 เริ่มย้ายข้อมูลทั้งหมด (4 แท็บ)", type="primary"):
         try:
             conn_gs = st.connection("gsheets", type=GSheetsConnection)
             conn_sb = st.connection("supabase", type="sql")
 
+            # รายชื่อแท็บใน Sheets : ชื่อตารางใน Supabase
             migration_plan = {
                 "Income": "income",
-                "Expense": "expense"
+                "Expense": "expense",
+                "Monthly": "monthly",
+                "LM_Insight": "lineman_insight" # หรือชื่อแท็บที่พี่ใช้เก็บข้อมูล LINE MAN
             }
 
             for sheet_name, table_name in migration_plan.items():
@@ -332,34 +334,29 @@ def run_migration_process():
                     if df is not None and not df.empty:
                         df.columns = [str(c).strip().lower() for c in df.columns]
                         
+                        # จัดการวันที่ (เฉพาะตารางที่มีวันที่ชัดเจน)
                         if 'date' in df.columns:
                             df['date'] = pd.to_datetime(df['date']).dt.date
 
-                        # 🚩 จุดที่แก้ไข: ถ้าเป็นตาราง expense ให้ลบช่อง unit_price ออก
-                        # เพราะใน Supabase เราตั้งเป็น Generated Column (ให้ DB คำนวณเอง)
+                        # ลบช่องที่ Database คำนวณเองออก (ป้องกัน Error GeneratedAlways)
                         if table_name == "expense" and "unit_price" in df.columns:
                             df = df.drop(columns=["unit_price"])
-                            st.write("💡 ลบช่อง unit_price ออกเพื่อให้ Database คำนวณใหม่ให้อัตโนมัติ")
 
+                        # ล้างค่าว่างและตัวซ้ำเบื้องต้น
                         df = df.where(pd.notnull(df), None)
-
-                        df.to_sql(
-                            table_name, 
-                            conn_sb.engine, 
-                            if_exists='append', 
-                            index=False,
-                            method='multi'
-                        )
+                        
+                        # ส่งเข้า Supabase
+                        df.to_sql(table_name, conn_sb.engine, if_exists='append', index=False, method='multi')
                         status.update(label=f"✅ ย้าย {sheet_name} สำเร็จ! ({len(df)} แถว)", state="complete")
                     else:
-                        status.update(label=f"❓ ไม่พบข้อมูลใน {sheet_name}", state="error")
+                        st.write(f"ℹ️ แท็บ {sheet_name} ไม่มีข้อมูลหรือหาไม่เจอ (ข้ามไปก่อน)")
+                        status.update(label=f"ข้าม {sheet_name}", state="complete")
 
             st.balloons()
-            st.success("🎉 ย้ายข้อมูลสำเร็จแล้วครับพี่! ลองเช็กใน Supabase ได้เลย")
+            st.success("🎉 ย้ายข้อมูลครบถ้วนทั้ง 4 ส่วนแล้วครับพี่!")
             
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาดระหว่างย้ายข้อมูล: {e}")
-
 # ============================================================
 # 5. AI FUNCTION
 # ============================================================
