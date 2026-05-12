@@ -415,7 +415,7 @@ with st.sidebar:
     st.divider()
 
     page = st.radio("เมนูหลัก", 
-        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย","🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด", "🛠️ Admin Migration"],
+        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย","🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด",],
         label_visibility="collapsed")
 
     st.divider()
