@@ -573,10 +573,13 @@ elif page == "💰 บันทึกรายรับ":
     res_raw = None
     
     if method == "📷 ถ่ายรูปหน้าจอสรุปยอด":
-        img_cam = st.camera_input("📸 ถ่ายรูปหน้าจอเครื่อง POS หรือมือถือที่สรุปยอด")
-        if img_cam and st.button("🪄 สกัดยอดจากรูป", type="primary"):
-            with st.spinner("AI กำลังอ่านยอดขาย..."):
-                res_raw = process_extraction(img_cam.read(), rtype, is_bytes=True, mime="image/jpeg")
+        st.info("💡 กดเปิดสวิตช์ด้านล่างเมื่อพร้อมถ่ายรูป")
+        # เพิ่มสวิตช์เปิดปิดกล้อง
+        if st.toggle("📸 เปิดใช้งานกล้องถ่ายรูป"):
+            img_cam = st.camera_input("📸 ถ่ายรูปหน้าจอเครื่อง POS หรือมือถือที่สรุปยอด")
+            if img_cam and st.button("🪄 สกัดยอดจากรูป", type="primary"):
+                with st.spinner("AI กำลังอ่านยอดขาย..."):
+                    res_raw = process_extraction(img_cam.read(), rtype, is_bytes=True, mime="image/jpeg")
 
     elif method == "🎙️ พูดบันทึกยอดขาย":
         audio_rec = st.audio_input("🎙️ กดปุ่มแล้วพูด (เช่น: Grab วันนี้ 1,250 บาท)")
@@ -637,10 +640,13 @@ elif page == "💸 บันทึกรายจ่าย":
     res_raw = None
     
     if method == "📷 ถ่ายรูปใบเสร็จ":
-        img_cam = st.camera_input("📸 เล็งไปที่ใบเสร็จ")
-        if img_cam and st.button("🪄 สกัดข้อมูลจากรูป", type="primary"):
-            with st.spinner("AI กำลังอ่านบิล..."):
-                res_raw = process_extraction(img_cam.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_names)
+        st.info("💡 กดเปิดสวิตช์ด้านล่างเมื่อพร้อมถ่ายรูป")
+        # เพิ่มสวิตช์เปิดปิดกล้อง
+        if st.toggle("📸 เปิดใช้งานกล้องถ่ายรูป"):
+            img_cam = st.camera_input("📸 เล็งไปที่ใบเสร็จ")
+            if img_cam and st.button("🪄 สกัดข้อมูลจากรูป", type="primary"):
+                with st.spinner("AI กำลังอ่านบิล..."):
+                    res_raw = process_extraction(img_cam.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_names)
 
     elif method == "🎙️ พูดบันทึกเสียง":
         audio_rec = st.audio_input("🎙️ กดปุ่มแล้วพูดรายการ")
@@ -752,24 +758,25 @@ elif page == "🎯 LINE MAN Insight":
     res_insight = [] # เปลี่ยนเป็น List เพื่อเก็บข้อมูลจากหลายๆ รูป
     
     if method == "📷 ถ่ายรูปสด/อัปโหลดรูป":
-        img_cam = st.camera_input("📸 ถ่ายรูปสด")
-        # ✅ เพิ่ม accept_multiple_files=True ตรงนี้
+        img_cam = None
+        # เพิ่มสวิตช์สำหรับเปิดกล้องแยกต่างหาก
+        if st.toggle("📸 เปิดใช้งานกล้องเพื่อถ่ายรูปสด"):
+            img_cam = st.camera_input("📸 ถ่ายรูปสด")
+            
         img_files = st.file_uploader("หรืออัปโหลดรูปภาพ (เลือกได้ทีละหลายรูป)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
         
         if st.button("🪄 วิเคราะห์เชิงลึก", type="primary"):
             with st.spinner("AI กำลังวิเคราะห์ข้อมูลทั้งหมด (อาจใช้เวลาสักครู่)..."):
                 
-                # ถ้ามีการถ่ายรูปจากกล้อง
                 if img_cam:
                     res = process_extraction(img_cam.read(), "Insight", is_bytes=True, mime="image/jpeg")
-                    if res: res_insight.extend(res) # นำข้อมูลมาต่อท้าย
+                    if res: res_insight.extend(res)
                 
-                # ถ้ามีการอัปโหลดไฟล์ (วนลูปทำทีละไฟล์)
                 if img_files:
                     for img_file in img_files:
                         mime_type = "image/jpeg" if img_file.name.lower().endswith("jpg") else f"image/{img_file.name.split('.')[-1].lower()}"
                         res = process_extraction(img_file.read(), "Insight", is_bytes=True, mime=mime_type)
-                        if res: res_insight.extend(res) # นำข้อมูลมาต่อท้าย
+                        if res: res_insight.extend(res)
 
             if res_insight:
                 st.session_state.tmp_insight = pd.DataFrame(res_insight)
