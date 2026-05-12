@@ -369,7 +369,7 @@ with st.sidebar:
     st.divider()
 
     page = st.radio("เมนูหลัก", 
-        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย","🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด"],
+        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย","🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด", "🛠️ รันการย้ายข้อมูล (ครั้งเดียว)"],
         label_visibility="collapsed")
 
     st.divider()
@@ -846,3 +846,30 @@ elif page == "🎯 LINE MAN Insight":
             m1.metric("🎯 ออเดอร์จากโฆษณา (Listing)", f"{ad_orders:,.0f} รายการ")
             m2.metric("🎁 จำนวนการใช้โปรโมชั่น", f"{promo_use:,.0f} ครั้ง")
             st.caption("เทียบจำนวนนี้กับยอดขายรวม เพื่อดูว่าคุ้มค่าโฆษณาที่จ่ายไปหรือไม่ครับ")
+
+def migrate_data_to_supabase():
+    st.info("🚀 เริ่มกระบวนการย้ายข้อมูลจาก Google Sheets ไปยัง Supabase...")
+    
+    # 1. เชื่อมต่อทั้งสองระบบ (ต้องตั้งค่า secrets ให้ครบก่อนนะครับ)
+    conn_gs = st.connection("gsheets", type=GSheetsConnection)
+    conn_sb = st.connection("supabase", type="sql")
+    
+    tabs = ["Income", "Expense", "Monthly"]
+    
+    for tab in tabs:
+        try:
+            # ดึงข้อมูลจาก Sheets
+            df = conn_gs.read(worksheet=tab, ttl=0)
+            if df is not None and not df.empty:
+                df.columns = [str(c).strip().lower() for c in df.columns]
+                
+                # เขียนข้อมูลลง Supabase (ชื่อตารางต้องตรงกับที่เราสร้างใน SQL Editor)
+                table_name = tab.lower()
+                df.to_sql(table_name, conn_sb.engine, if_exists='append', index=False)
+                st.success(f"✅ ย้ายข้อมูลจาก {tab} สำเร็จ!")
+        except Exception as e:
+            st.warning(f"⚠️ ไม่สามารถย้าย {tab} ได้: {e}")
+
+# วิธีรัน: พี่อาจจะทำปุ่มชั่วคราวใน Sidebar เพื่อกดรันตัวนี้ครับ
+# if st.sidebar.button("🛠️ รันการย้ายข้อมูล (ครั้งเดียว)"):
+#     migrate_data_to_supabase()
