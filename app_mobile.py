@@ -369,7 +369,7 @@ with st.sidebar:
     st.divider()
 
     page = st.radio("เมนูหลัก", 
-        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย","🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด", "🛠️ รันการย้ายข้อมูล (ครั้งเดียว)"],
+        ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย","🎯 LINE MAN Insight", "🤖 AI Agent", "📋 ข้อมูลทั้งหมด", "🛠️ Admin Migration"],
         label_visibility="collapsed")
 
     st.divider()
@@ -744,6 +744,9 @@ elif page == "📋 ข้อมูลทั้งหมด":
             st.dataframe(df_m, use_container_width=True)
         else:
             st.info("ยังไม่มีข้อมูลรายเดือน")
+
+elif page == "🛠️ Admin Migration":
+    run_migration_process()
 
 # ============================================================
 # 13. PAGE — LINE MAN INSIGHT (วิเคราะห์เมนู + การตลาด)
