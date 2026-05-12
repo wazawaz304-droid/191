@@ -552,9 +552,70 @@ elif page == "📈 วิเคราะห์รายเดือน":
             )
     else:
         st.info("ยังไม่มีข้อมูลรายเดือน — บันทึกสรุปรายเดือนก่อนครับ")
+        
+# ============================================================
+# 9. PAGE — บันทึกรายรับ (แก้ไขระบบถ่ายรูป/อัดเสียง และความจำข้อมูล)
+# ============================================================
+elif page == "💰 บันทึกรายรับ":
+    st.markdown("<div class='page-title'>💰 บันทึกรายรับ</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-sub'>สแกนรายงาน · อัดเสียงยอดขาย · พิมพ์สรุปยอด</div>", unsafe_allow_html=True)
+
+    rtype = st.radio("ประเภทรายรับ:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"], horizontal=True)
+    method = st.radio("วิธีบันทึก:", ["📷 ถ่ายรูปหน้าจอสรุปยอด", "🎙️ พูดบันทึกยอดขาย", "⌨️ พิมพ์เอง", "🖼️ อัปโหลดรูป"], horizontal=True)
+
+    # --- ส่วนที่ 1: การรับค่าและสกัดข้อมูล (Input) ---
+    res_raw = None
+    
+    if method == "📷 ถ่ายรูปหน้าจอสรุปยอด":
+        img_cam = st.camera_input("📸 ถ่ายรูปหน้าจอเครื่อง POS หรือมือถือที่สรุปยอด")
+        if img_cam and st.button("🪄 สกัดยอดจากรูป", type="primary"):
+            with st.spinner("AI กำลังอ่านยอดขาย..."):
+                res_raw = process_extraction(img_cam.read(), rtype, is_bytes=True, mime="image/jpeg")
+
+    elif method == "🎙️ พูดบันทึกยอดขาย":
+        audio_rec = st.audio_input("🎙️ กดปุ่มแล้วพูด (เช่น: Grab วันนี้ 1,250 บาท)")
+        if audio_rec and st.button("🚀 แปลงเสียงเป็นยอดเงิน", type="primary"):
+            with st.spinner("AI กำลังฟังเสียง..."):
+                res_raw = process_extraction(audio_rec.read(), rtype, is_bytes=True, mime="audio/wav")
+
+    elif method == "⌨️ พิมพ์เอง":
+        txt = st.text_area("วางสรุปยอดขายจากแอปที่นี่:", placeholder="เช่น: LINE MAN ยอดโอน 1,059.41 วันที่ 11 พ.ค.")
+        if txt and st.button("🪄 วิเคราะห์ยอดขาย", type="primary"):
+            res_raw = process_extraction(txt, rtype)
+
+    elif method == "🖼️ อัปโหลดรูป":
+        img_file = st.file_uploader("เลือกรูปภาพสรุปยอด", type=["jpg", "png", "jpeg"])
+        if img_file and st.button("🪄 วิเคราะห์จากไฟล์", type="primary"):
+            res_raw = process_extraction(img_file.read(), rtype, is_bytes=True, mime="image/jpeg")
+
+    # --- ส่วนที่ 2: ใช้ Session State เก็บข้อมูลไว้ (กันข้อมูลหาย) ---
+    if res_raw:
+        st.session_state.tmp_inc_data = pd.DataFrame(res_raw)
+        st.success(f"✅ AI พบข้อมูลรายรับ {len(res_raw)} รายการ")
+
+    # --- ส่วนที่ 3: แสดงตารางแก้ไขและปุ่มบันทึก ---
+    if 'tmp_inc_data' in st.session_state and not st.session_state.tmp_inc_data.empty:
+        st.markdown("<div class='section-title'>✏️ ตรวจสอบรายรับก่อนลงบัญชี</div>", unsafe_allow_html=True)
+        
+        # ตารางตรวจสอบข้อมูล (11 คอลัมน์จะถูกจัดการอัตโนมัติในฟังก์ชัน save_to_tab)
+        edited_df = st.data_editor(st.session_state.tmp_inc_data, use_container_width=True, num_rows="dynamic")
+        
+        c1, c2 = st.columns([1, 4])
+        with c1:
+            if st.button("💾 บันทึกลง Sheets", type="primary"):
+                with st.spinner("กำลังบันทึกรายรับ..."):
+                    if save_to_tab(edited_df, "Income"):
+                        st.success("✅ บันทึกรายรับร้าน @304 สำเร็จ!")
+                        del st.session_state.tmp_inc_data # ล้างข้อมูลหลังเซฟ
+                        st.cache_data.clear() # อัปเดต Dashboard ทันที
+                        st.rerun()
+        with c2:
+            if st.button("🗑️ ล้างข้อมูล"):
+                del st.session_state.tmp_inc_data
+                st.rerun()
 
 # ============================================================
-# 9. PAGE — บันทึกรายจ่าย (แก้ไขระบบความจำข้อมูลสกัด)
+# 10. PAGE — บันทึกรายจ่าย (แก้ไขระบบความจำข้อมูลสกัด)
 # ============================================================
 elif page == "💸 บันทึกรายจ่าย":
     st.markdown("<div class='page-title'>💸 บันทึกรายจ่าย</div>", unsafe_allow_html=True)
@@ -619,60 +680,6 @@ elif page == "💸 บันทึกรายจ่าย":
                 del st.session_state.tmp_exp_data
                 st.rerun()
 
-# ============================================================
-# 10. PAGE — บันทึกรายจ่าย (แก้ไขส่วนกล้องและเสียงให้ใช้งานได้จริง)
-# ============================================================
-elif page == "💸 บันทึกรายจ่าย":
-    st.markdown("<div class='page-title'>💸 บันทึกรายจ่าย</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>สแกนบิล · อัดเสียงพูด · พิมพ์รายการ</div>", unsafe_allow_html=True)
-
-    method = st.radio("เลือกวิธีบันทึก:", ["📷 ถ่ายรูปใบเสร็จ", "🎙️ พูดบันทึกเสียง", "⌨️ พิมพ์เอง", "🖼️ อัปโหลดรูป"], horizontal=True)
-
-    # ดึงชื่อสินค้าเดิมที่มีในชีตมาให้ AI ช่วยจำ
-    df_exp = load_expense_data()
-    existing_names = df_exp['name'].unique().tolist() if not df_exp.empty else []
-    res_ex = None
-
-    # --- ส่วนที่ 1: ถ่ายรูปสดจากกล้อง ---
-    if method == "📷 ถ่ายรูปใบเสร็จ":
-        img_cam = st.camera_input("📸 เล็งไปที่ใบเสร็จหรือบิลวัตถุดิบ")
-        if img_cam and st.button("🪄 สกัดข้อมูลจากรูป", type="primary"):
-            with st.spinner("AI กำลังอ่านบิล..."):
-                res_ex = process_extraction(img_cam.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_names)
-
-    # --- ส่วนที่ 2: อัดเสียงสด ---
-    elif method == "🎙️ พูดบันทึกเสียง":
-        audio_rec = st.audio_input("🎙️ กดปุ่มแล้วพูดรายการ (เช่น: ซื้อไก่ 500 บาท)")
-        if audio_rec and st.button("🚀 แปลงเสียงเป็นรายการ", type="primary"):
-            with st.spinner("AI กำลังฟังเสียง..."):
-                res_ex = process_extraction(audio_rec.read(), "Expense", is_bytes=True, mime="audio/wav", existing_names=existing_names)
-
-    # --- ส่วนที่ 3: พิมพ์ข้อความเอง ---
-    elif method == "⌨️ พิมพ์เอง":
-        txt = st.text_area("วางข้อความรายจ่ายที่นี่:", placeholder="เช่น: ซื้อไข่ไก่ 3 แผง 420 บาท")
-        if txt and st.button("🪄 วิเคราะห์ข้อความ", type="primary"):
-            res_ex = process_extraction(txt, "Expense", existing_names=existing_names)
-
-    # --- ส่วนที่ 4: อัปโหลดไฟล์รูป ---
-    elif method == "🖼️ อัปโหลดรูป":
-        img_file = st.file_uploader("เลือกรูปภาพใบเสร็จ", type=["jpg", "jpeg", "png"])
-        if img_file and st.button("🪄 วิเคราะห์จากไฟล์", type="primary"):
-            res_ex = process_extraction(img_file.read(), "Expense", is_bytes=True, mime="image/jpeg", existing_names=existing_names)
-
-    # --- ส่วนการตรวจสอบและบันทึกลง Sheets ---
-    if res_ex:
-        st.markdown("<div class='section-title'>✏️ ตรวจสอบข้อมูลก่อนบันทึก</div>", unsafe_allow_html=True)
-        edited_ex = st.data_editor(pd.DataFrame(res_ex), use_container_width=True, num_rows="dynamic")
-        
-        c1, c2 = st.columns([1, 4])
-        with c1:
-            if st.button("💾 บันทึกทันที", type="primary"):
-                if save_to_tab(edited_ex, "Expense"):
-                    st.success("✅ บันทึกรายจ่ายร้าน @304 สำเร็จ!")
-                    st.rerun()
-        with c2:
-            if st.button("🗑️ ล้างรายการ"):
-                st.rerun()
 
 # ============================================================
 # 11. PAGE — AI AGENT
