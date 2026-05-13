@@ -279,12 +279,17 @@ def save_to_tab(df, tab):
         return True
 
     except Exception as e:
-        if "unique constraint" in str(e).lower():
-            st.warning("⚠️ ข้อมูลนี้มีการบันทึกไว้ในระบบแล้ว (วันที่และแอปซ้ำกัน)")
+        error_msg = str(e).lower()
+        
+        # ✅ เพิ่มส่วนนี้ — จัดการข้อมูลซ้ำ
+        if "unique constraint" in error_msg or "duplicate key" in error_msg:
+            st.warning("⚠️ ข้อมูลนี้มีในระบบแล้ว (วันที่และแอปซ้ำกัน)")
+            logger.info(f"⏩ ข้าม: ข้อมูลซ้ำใน {table_name}")
+            return True  # ถือว่าสำเร็จ
         else:
             logger.error(f"❌ บันทึก {tab} ล้มเหลว: {e}")
             st.error(f"❌ บันทึกล้มเหลว: {e}")
-        return False
+            return False
         
 def run_migration_process():
     st.markdown("### 🛠️ ระบบย้ายข้อมูล (GSheets -> Supabase)")
