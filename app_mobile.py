@@ -825,12 +825,13 @@ elif page == "🤖 AI Agent":
         st.warning("⚠️ ยังไม่มีข้อมูล - บันทึกข้อมูลรายรับ/รายจ่ายก่อนครับ")
 
 # ============================================================
-# 14. PAGE — ข้อมูลทั้งหมด & MIGRATION
+# 14. PAGE — ALL DATA (ปรับปรุง: ย้ายช่อง ID ไปไว้ท้ายสุดเพื่อให้อ่านง่าย)
 # ============================================================
 elif page == "📋 ข้อมูลทั้งหมด":
     st.markdown("<div class='page-title'>📋 ฐานข้อมูล Cloud ทั้งหมด</div>", unsafe_allow_html=True)
     st.markdown("<div class='page-sub'>ดูข้อมูลทั้งหมดจาก Supabase Database</div>", unsafe_allow_html=True)
 
+    # โหลดข้อมูลจาก SQL
     df_i = load_income_data()
     df_e = load_expense_data()
     df_m = load_monthly_data()
@@ -840,23 +841,44 @@ elif page == "📋 ข้อมูลทั้งหมด":
 
     with tab1:
         st.markdown("<div class='section-title'>📊 ข้อมูลรายรับ</div>", unsafe_allow_html=True)
-        if not df_i.empty: st.dataframe(df_i, use_container_width=True)
-        else: st.info("ยังไม่มีข้อมูลรายรับ")
+        if not df_i.empty:
+            # ✅ ย้ายช่อง id ไปไว้หลังสุด
+            if 'id' in df_i.columns:
+                cols = [c for c in df_i.columns if c != 'id'] + ['id']
+                df_i = df_i[cols]
+            st.dataframe(df_i, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลรายรับ")
 
     with tab2:
         st.markdown("<div class='section-title'>📦 ข้อมูลรายจ่าย</div>", unsafe_allow_html=True)
-        if not df_e.empty: st.dataframe(df_e, use_container_width=True)
-        else: st.info("ยังไม่มีข้อมูลรายจ่าย")
+        if not df_e.empty:
+            # ✅ ย้ายช่อง id ไปไว้หลังสุด
+            if 'id' in df_e.columns:
+                cols = [c for c in df_e.columns if c != 'id'] + ['id']
+                df_e = df_e[cols]
+            st.dataframe(df_e, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลรายจ่าย")
 
     with tab3:
         st.markdown("<div class='section-title'>📅 ข้อมูลรายเดือน</div>", unsafe_allow_html=True)
-        if not df_m.empty: st.dataframe(df_m, use_container_width=True)
-        else: st.info("ยังไม่มีข้อมูลรายเดือน")
+        if not df_m.empty:
+            # ✅ ย้ายช่อง id ไปไว้หลังสุด
+            if 'id' in df_m.columns:
+                cols = [c for c in df_m.columns if c != 'id'] + ['id']
+                df_m = df_m[cols]
+            st.dataframe(df_m, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลรายเดือน")
         
     with tab4:
         st.markdown("<div class='section-title'>🎯 ข้อมูล LINE MAN Insight</div>", unsafe_allow_html=True)
-        if not df_insight.empty: st.dataframe(df_insight, use_container_width=True)
-        else: st.info("ยังไม่มีข้อมูล Insight")
-
-elif page == "🛠️ Admin Migration":
-    run_migration_process()
+        if not df_insight.empty:
+            # ✅ ย้ายช่อง id ไปไว้หลังสุด
+            if 'id' in df_insight.columns:
+                cols = [c for c in df_insight.columns if c != 'id'] + ['id']
+                df_insight = df_insight[cols]
+            st.dataframe(df_insight, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูล Insight")
