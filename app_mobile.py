@@ -413,32 +413,31 @@ with st.sidebar:
             st.rerun()
 
 # ============================================================
-# 7. PAGE — DASHBOARD (ฉบับเต็ม: เพิ่มกราฟเปรียบเทียบ รับ-จ่าย)
+# 7. PAGE — DASHBOARD รายวัน
 # ============================================================
 if page == "📊 Dashboard รายวัน":
-    st.markdown("<div class='page-title'>📊 Dashboard รายวัน</div>", unsafe_allow_html=True)
-    st.markdown("<div class='page-sub'>ภาพรวมรายรับ-รายจ่าย ร้านเนฟ หมี่ไก่ฉีก @304</div>", unsafe_allow_html=True) #
-    
-    # โหลดข้อมูลจากฐานข้อมูล SQL
+    col_t, col_r = st.columns([4, 1])
+    with col_t:
+        st.markdown("<div class='page-title'>📊 Dashboard รายวัน</div>", unsafe_allow_html=True)
+        st.markdown("<div class='page-sub'>ภาพรวมรายรับ-รายจ่าย ทั้งหมดบน Cloud DB</div>", unsafe_allow_html=True)
+
     df_i = load_income_data()
     df_e = load_expense_data()
-    
-    # ทำความสะอาดข้อมูลตัวเลขเพื่อให้คำนวณได้แม่นยำ
-    if not df_i.empty: 
+
+    if not df_i.empty and 'net_income' in df_i.columns:
         df_i['net_income'] = clean_numeric(df_i, 'net_income')
-    if not df_e.empty: 
+    if not df_e.empty and 'total_price' in df_e.columns:
         df_e['total_price'] = clean_numeric(df_e, 'total_price')
-    
-    # คำนวณ KPI หลัก
-    t_inc = df_i['net_income'].sum() if not df_i.empty else 0
-    t_exp = df_e['total_price'].sum() if not df_e.empty else 0
+
+    t_inc = df_i['net_income'].sum() if not df_i.empty and 'net_income' in df_i.columns else 0
+    t_exp = df_e['total_price'].sum() if not df_e.empty and 'total_price' in df_e.columns else 0
     profit = t_inc - t_exp
-    
-    # คำนวณรายรับเฉพาะวันนี้ (อ้างอิงจากข้อมูลล่าสุดในระบบ)
+
     today = pd.Timestamp.now().normalize()
-    today_inc = df_i[df_i["date"] >= today]["net_income"].sum() if not df_i.empty and "date" in df_i.columns else 0
-    
-    # แสดงผล Metric Cards 4 ช่อง
+    today_inc = 0
+    if not df_i.empty and "date" in df_i.columns:
+        today_inc = df_i[df_i["date"] >= today]["net_income"].sum()
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💰 รายรับรวม", f"฿{t_inc:,.0f}")
     c2.metric("📦 รายจ่ายรวม", f"฿{t_exp:,.0f}")
@@ -447,51 +446,10 @@ if page == "📊 Dashboard รายวัน":
 
     st.divider()
 
-    # ตัวเลือกช่วงเวลาสำหรับกราฟ
     days = st.select_slider("ดูย้อนหลัง:", options=[7, 14, 30, 60, 90, 180, 365], value=30, format_func=lambda x: f"{x} วัน" if x < 365 else "1 ปี")
     cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
 
-    # สร้าง Tabs (เพิ่ม Tab แรกสำหรับการเปรียบเทียบ)
-    tab_compare, tab_inc, tab_exp, tab_price = st.tabs(["📊 เทียบรับ-จ่าย", "📅 รายรับรายแพลตฟอร์ม", "🛒 รายจ่ายวัตถุดิบ", "📈 ราคาวัตถุดิบ"])
-
-    with tab_compare:
-        st.markdown("<div class='section-title'>เปรียบเทียบรายรับและรายจ่ายรายวัน</div>", unsafe_allow_html=True)
-        if not df_i.empty and not df_e.empty:
-            # รวมกลุ่มข้อมูลรายวัน (Daily Aggregation)
-            daily_i = df_i[df_i['date'] >= cutoff].groupby('date')['net_income'].sum().reset_index()
-            daily_e = df_e[df_e['date'] >= cutoff].groupby('date')['total_price'].sum().reset_index()
-            
-            # Merge ข้อมูลเข้าด้วยกันตามวันที่[cite: 2]
-            df_merged = pd.merge(daily_i, daily_e, on='date', how='outer').fillna(0).sort_values('date')
-            
-            # สร้างกราฟแท่งแบบ Grouped (วางคู่กัน)
-            fig_compare = go.Figure()
-            fig_compare.add_trace(go.Bar(
-                x=df_merged['date'], 
-                y=df_merged['net_income'], 
-                name='รายรับสุทธิ (Net)', 
-                marker_color='#1a6b4a',
-                opacity=0.8
-            ))
-            fig_compare.add_trace(go.Bar(
-                x=df_merged['date'], 
-                y=df_merged['total_price'], 
-                name='รายจ่ายวัตถุดิบ', 
-                marker_color='#f43f5e',
-                opacity=0.8
-            ))
-            
-            fig_compare.update_layout(
-                barmode='group',
-                hovermode='x unified',
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin=dict(l=0, r=0, t=40, b=0)
-            )
-            st.plotly_chart(fig_compare, use_container_width=True)
-        else:
-            st.info("ต้องการข้อมูลทั้งรายรับและรายจ่ายเพื่อแสดงกราฟเปรียบเทียบ")
+    tab_inc, tab_exp, tab_price = st.tabs(["📅 รายรับรายวัน", "🛒 รายจ่ายวัตถุดิบ", "📈 ราคาวัตถุดิบ"])
 
     with tab_inc:
         if not df_i.empty and 'date' in df_i.columns:
@@ -502,27 +460,58 @@ if page == "📊 Dashboard รายวัน":
 
                 fig = go.Figure()
                 colors = {'GrabFood': '#00b14f', 'LINE MAN': '#0094ff', 'ShopeeFood': '#f97316', 'หน้าร้าน': '#8b5cf6'}
+                fallback = ['#06b6d4','#f43f5e','#eab308','#14b8a6','#64748b']
+                fb_idx = 0
                 for app in df_fi.get('app', pd.Series()).unique():
                     d = df_fi[df_fi['app'] == app]
-                    fig.add_trace(go.Bar(x=d['date'], y=d['net_income'], name=app, marker_color=colors.get(app, '#64748b')))
+                    if app not in colors:
+                        colors[app] = fallback[fb_idx % len(fallback)]
+                        fb_idx += 1
+                    fig.add_trace(go.Bar(x=d['date'], y=d['net_income'], name=app, marker_color=colors[app], opacity=0.9))
                 fig.add_trace(go.Scatter(x=daily['date'], y=daily['rolling'], name='เฉลี่ย 7 วัน', mode='lines', line=dict(color='#fbbf24', dash='dot', width=2.5)))
-                fig.update_layout(barmode='stack', hovermode='x unified', title=f"สัดส่วนรายรับแยกตามแพลตฟอร์ม", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                fig.update_layout(barmode='stack', hovermode='x unified', title=f"รายรับย้อนหลัง {days} วัน", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=40, b=0))
                 st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"ไม่มีข้อมูลรายรับในช่วง {days} วันที่ผ่านมา")
+        else:
+            st.info("ยังไม่มีข้อมูลรายรับ")
 
     with tab_exp:
-        if not df_e.empty:
+        if not df_e.empty and 'name' in df_e.columns:
             col_l, col_r = st.columns(2)
-            with col_l: 
-                st.plotly_chart(px.pie(df_e, values='total_price', names='name', hole=0.4, title="สัดส่วนรายจ่ายแยกตามวัตถุดิบ"), use_container_width=True)
-            with col_r: 
-                top_e = df_e.groupby('name')['total_price'].sum().nlargest(8).reset_index()
-                st.plotly_chart(px.bar(top_e, x='total_price', y='name', orientation='h', title="8 อันดับรายจ่ายสูงสุด", color='total_price', color_continuous_scale='Reds'), use_container_width=True)
-    
+            with col_l:
+                fig_pie = px.pie(df_e, values='total_price', names='name', hole=0.4, title="สัดส่วนรายจ่ายทั้งหมด")
+                fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=40, b=0))
+                st.plotly_chart(fig_pie, use_container_width=True)
+            with col_r:
+                top = df_e.groupby('name')['total_price'].sum().nlargest(8).reset_index()
+                fig_bar = px.bar(top, x='total_price', y='name', orientation='h', color='total_price', color_continuous_scale='Greens', title="Top 8 รายจ่ายวัตถุดิบ")
+                fig_bar.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=40, b=0))
+                st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลรายจ่าย")
+
     with tab_price:
-        if not df_e.empty:
-            item = st.selectbox("เลือกวัตถุดิบเพื่อดูแนวโน้มราคา:", sorted(df_e['name'].dropna().unique()))
-            df_it = df_e[df_e['name'] == item].sort_values('date')
-            st.plotly_chart(px.line(df_it, x='date', y='unit_price', markers=True, title=f"แนวโน้มราคา {item} ต่อหน่วย (จาก SQL)"), use_container_width=True)
+        if not df_e.empty and 'name' in df_e.columns:
+            item = st.selectbox("เลือกวัตถุดิบ:", sorted(df_e['name'].dropna().unique()))
+            df_it = df_e[df_e['name'] == item].sort_values('date').copy()
+            
+            # ใช้ unit_price ที่มาจาก Cloud DB ได้เลย เพราะ Supabase คำนวณให้แล้ว
+            if 'unit_price' not in df_it.columns:
+                qty = clean_numeric(df_it, 'qty').replace(0, 1)
+                df_it['unit_price'] = df_it['total_price'] / qty
+
+            if len(df_it) >= 2:
+                last, prev = df_it['unit_price'].iloc[-1], df_it['unit_price'].iloc[-2]
+                chg = (last - prev) / prev * 100 if prev > 0 else 0
+                ca, cb = st.columns(2)
+                ca.metric("ราคาล่าสุด/หน่วย", f"฿{last:.2f}", delta=f"{chg:+.1f}% vs ครั้งก่อน", delta_color="inverse")
+                cb.metric("ซื้อทั้งหมด", f"{len(df_it)} ครั้ง", delta=f"รวม ฿{df_it['total_price'].sum():,.0f}")
+            
+            fig_l = px.line(df_it, x='date', y='unit_price', markers=True, title=f"แนวโน้มราคา {item} ต่อหน่วย")
+            fig_l.update_traces(line_color='#1a6b4a', marker_color='#1a6b4a')
+            fig_l.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig_l, use_container_width=True)
 
 # ============================================================
 # 8. PAGE — วิเคราะห์รายเดือน
