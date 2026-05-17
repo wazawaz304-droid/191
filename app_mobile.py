@@ -225,7 +225,7 @@ with st.sidebar:
         st.rerun()
 
 # ============================================================
-# 7. PAGE — DASHBOARD (ปรับปรุง: ล็อกสีเข้มชัดเจนแยกตามแอปเดลิเวอรี่)
+# 7. PAGE — DASHBOARD (แก้ไขแล้ว: เปลี่ยนเป็นคอมเมนต์ Python #)
 # ============================================================
 if page == "📊 Dashboard รายวัน":
     st.markdown("<div class='page-title'>📊 Dashboard รายวัน</div>", unsafe_allow_html=True)
@@ -243,12 +243,12 @@ if page == "📊 Dashboard รายวัน":
     tab1, tab2 = st.tabs(["📈 กราฟรายรับ", "📦 สัดส่วนรายจ่าย"])
     with tab1:
         if not df_i.empty:
-            # 🎨 ตั้งค่า Map สีเข้มชัดเจนตามที่พี่สั่งไว้
+            # 🎨 แก้ไขระบบคอมเมนต์เรียบร้อย สีเข้มชัดเจนตามสั่ง
             app_colors = {
-                'LINE MAN': '#2ecc71',      /* เขียวอ่อนสดใส */
-                'GrabFood': '#064e3b',      /* เขียวเข้มตัวจริง */
-                'ShopeeFood': '#f97316',    /* สีส้มเด่นชัด */
-                'หน้าร้าน': '#8b5cf6'        /* สีม่วงโมเดิร์น */
+                'LINE MAN': '#2ecc71',      # เขียวอ่อนสดใส
+                'GrabFood': '#064e3b',      # เขียวเข้มตัวจริง
+                'ShopeeFood': '#f97316',    # สีส้มเด่นชัด
+                'หน้าร้าน': '#8b5cf6'        # สีม่วงโมเดิร์น
             }
             fig = px.bar(
                 df_i, 
@@ -330,7 +330,20 @@ elif page == "📧 Sync ยอดจาก Email":
                 del st.session_state.email_sync
 
 # ============================================================
-# 14. PAGE — ALL DATA (อัปเกรด: เพิ่มระบบตรวจรหัสผ่าน 7727 ก่อนเซฟ)
+# 12. PAGE — LINE MAN INSIGHT
+# ============================================================
+elif page == "🎯 LINE MAN Insight":
+    st.markdown("<div class='page-title'>🎯 LINE MAN Insight</div>", unsafe_allow_html=True)
+
+# ============================================================
+# 13. PAGE — AI AGENT
+# ============================================================
+elif page == "🤖 AI Agent":
+    st.markdown("<div class='page-title'>🤖 AI Agent</div>", unsafe_allow_html=True)
+    st.info("กำลังพัฒนาที่ปรึกษาพาสเทลให้พี่ครับ...")
+
+# ============================================================
+# 14. PAGE — ALL DATA (พร้อมระบบความปลอดภัย 7727)
 # ============================================================
 elif page == "📋 ข้อมูลทั้งหมด":
     st.markdown("<div class='page-title'>📋 จัดการฐานข้อมูล (Editable)</div>", unsafe_allow_html=True)
@@ -347,7 +360,6 @@ elif page == "📋 ข้อมูลทั้งหมด":
             
             edited_income = st.data_editor(df_i, use_container_width=True, num_rows="dynamic", key="editor_inc")
             
-            # ชุดปุ่มและกล่องรหัสความปลอดภัย
             col_btn, col_pin = st.columns([3, 1])
             with col_pin:
                 pin_inc = st.text_input("รหัสผ่าน", type="password", max_chars=4, placeholder="PIN 4 หลัก", key="pin_i", label_visibility="collapsed")
