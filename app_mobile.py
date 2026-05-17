@@ -222,7 +222,7 @@ def process_extraction(data, p_type, is_bytes=False, mime=None):
 with st.sidebar:
     st.markdown("<h1 style='color:#555; margin-bottom:0;'>🍜 Nave 304</h1>", unsafe_allow_html=True)
     st.divider()
-    page = st.radio("เมนูหลัก", ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย", "🎯 LINE MAN Insight", "📋 ข้อมูลทั้งหมด", label_visibility="collapsed")
+    page = st.radio("เมนูหลัก", ["📊 Dashboard รายวัน", "📈 วิเคราะห์รายเดือน", "💰 บันทึกรายรับ", "💸 บันทึกรายจ่าย", "📧 Sync ยอดจาก Email", "🎯 LINE MAN Insight", "📋 ข้อมูลทั้งหมด", "🛠️ Admin Migration"], label_visibility="collapsed")
     if st.button("🔄 รีเฟรชข้อมูล", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
@@ -385,3 +385,9 @@ elif page == "📋 ข้อมูลทั้งหมด":
                 if update_full_table(edited_insight, "lineman_insight"):
                     st.success("✅ อัปเดตข้อมูล Insight เรียบร้อย!")
                     st.rerun()
+
+# ============================================================
+# 🛠️ ADMIN MIGRATION
+# ============================================================
+elif page == "🛠️ Admin Migration":
+    run_migration_process()
