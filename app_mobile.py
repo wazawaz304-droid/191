@@ -137,19 +137,16 @@ def clean_numeric(df, col_name):
         return pd.to_numeric(cleaned, errors='coerce').fillna(0)
     return pd.Series([0.0] * len(df))
 
-# ฟังก์ชันใหม่สำหรับการแก้ไขข้อมูลแบบ Overwrite (Editable Table)
+# ฟังก์ชันสำหรับการแก้ไขข้อมูลแบบ Overwrite (Editable Table)
 def update_full_table(df, table_name):
     if conn_sb is None or df.empty: return False
     try:
-        # เตรียมข้อมูล: ลบ unit_price ออกถ้าเป็นตาราง expense (เพราะเป็น Generated Column ใน DB)
         save_df = df.copy()
         if table_name == "expense" and "unit_price" in save_df.columns:
             save_df = save_df.drop(columns=["unit_price"])
         
-        # จัดการค่าว่าง
         save_df = save_df.where(pd.notnull(save_df), None)
         
-        # ใช้ Transaction เพื่อความปลอดภัย: ลบของเก่าและเสียบของใหม่
         with conn_sb.engine.begin() as connection:
             connection.execute(text(f"DELETE FROM {table_name}"))
             save_df.to_sql(table_name, connection, if_exists='append', index=False, method='multi')
@@ -333,11 +330,11 @@ elif page == "📧 Sync ยอดจาก Email":
                 del st.session_state.email_sync
 
 # ============================================================
-# 14. PAGE — ALL DATA (อัปเกรด: แก้ไขได้และมีปุ่มยืนยัน)
+# 14. PAGE — ALL DATA (อัปเกรด: เพิ่มระบบตรวจรหัสผ่าน 7727 ก่อนเซฟ)
 # ============================================================
 elif page == "📋 ข้อมูลทั้งหมด":
     st.markdown("<div class='page-title'>📋 จัดการฐานข้อมูล (Editable)</div>", unsafe_allow_html=True)
-    st.info("💡 พี่กุลเศรษฐ์สามารถแก้ข้อมูลในตารางได้เลยครับ เสร็จแล้วอย่าลืมกดปุ่ม 'บันทึกการแก้ไข' ด้านล่างตารางนะครับ")
+    st.info("💡 พี่กุลเศรษฐ์สามารถแก้ไขตารางได้โดยตรง และจำเป็นต้องใส่รหัสความปลอดภัย 4 หลักก่อนกดยืนยันบันทึกครับ")
 
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Income", "📦 Expense", "📅 Monthly", "🎯 Insight"])
 
@@ -345,17 +342,23 @@ elif page == "📋 ข้อมูลทั้งหมด":
         st.markdown("<div class='section-title'>แก้ไขรายรับ (Income)</div>", unsafe_allow_html=True)
         df_i = load_income_data()
         if not df_i.empty:
-            # ย้าย ID ไปหลังสุดเพื่อความสวยงาม
             cols = [c for c in df_i.columns if c != 'id'] + ['id']
             df_i = df_i[cols]
             
-            # ใช้ st.data_editor เพื่อให้แก้ไขได้
             edited_income = st.data_editor(df_i, use_container_width=True, num_rows="dynamic", key="editor_inc")
             
-            if st.button("💾 ยืนยันบันทึกการแก้ไข Income", type="primary"):
-                if update_full_table(edited_income, "income"):
-                    st.success("✅ อัปเดตข้อมูลรายรับเรียบร้อย!")
-                    st.rerun()
+            # ชุดปุ่มและกล่องรหัสความปลอดภัย
+            col_btn, col_pin = st.columns([3, 1])
+            with col_pin:
+                pin_inc = st.text_input("รหัสผ่าน", type="password", max_chars=4, placeholder="PIN 4 หลัก", key="pin_i", label_visibility="collapsed")
+            with col_btn:
+                if st.button("💾 ยืนยันบันทึกการแก้ไข Income", type="primary", use_container_width=True):
+                    if pin_inc == "7727":
+                        if update_full_table(edited_income, "income"):
+                            st.success("✅ อัปเดตข้อมูลรายรับเรียบร้อย!")
+                            st.rerun()
+                    else:
+                        st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง")
         else: st.info("ยังไม่มีข้อมูล")
 
     with tab2:
@@ -367,10 +370,17 @@ elif page == "📋 ข้อมูลทั้งหมด":
             
             edited_expense = st.data_editor(df_e, use_container_width=True, num_rows="dynamic", key="editor_exp")
             
-            if st.button("💾 ยืนยันบันทึกการแก้ไข Expense", type="primary"):
-                if update_full_table(edited_expense, "expense"):
-                    st.success("✅ อัปเดตข้อมูลรายจ่ายเรียบร้อย!")
-                    st.rerun()
+            col_btn, col_pin = st.columns([3, 1])
+            with col_pin:
+                pin_exp = st.text_input("รหัสผ่าน", type="password", max_chars=4, placeholder="PIN 4 หลัก", key="pin_e", label_visibility="collapsed")
+            with col_btn:
+                if st.button("💾 ยืนยันบันทึกการแก้ไข Expense", type="primary", use_container_width=True):
+                    if pin_exp == "7727":
+                        if update_full_table(edited_expense, "expense"):
+                            st.success("✅ อัปเดตข้อมูลรายจ่ายเรียบร้อย!")
+                            st.rerun()
+                    else:
+                        st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง")
         else: st.info("ยังไม่มีข้อมูล")
 
     with tab3:
@@ -382,10 +392,18 @@ elif page == "📋 ข้อมูลทั้งหมด":
             
             edited_monthly = st.data_editor(df_m, use_container_width=True, num_rows="dynamic", key="editor_mon")
             
-            if st.button("💾 ยืนยันบันทึกการแก้ไข Monthly", type="primary"):
-                if update_full_table(edited_monthly, "monthly"):
-                    st.success("✅ อัปเดตข้อมูลรายเดือนเรียบร้อย!")
-                    st.rerun()
+            col_btn, col_pin = st.columns([3, 1])
+            with col_pin:
+                pin_mon = st.text_input("รหัสผ่าน", type="password", max_chars=4, placeholder="PIN 4 หลัก", key="pin_m", label_visibility="collapsed")
+            with col_btn:
+                if st.button("💾 ยืนยันบันทึกการแก้ไข Monthly", type="primary", use_container_width=True):
+                    if pin_mon == "7727":
+                        if update_full_table(edited_monthly, "monthly"):
+                            st.success("✅ อัปเดตข้อมูลรายเดือนเรียบร้อย!")
+                            st.rerun()
+                    else:
+                        st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง")
+        else: st.info("ยังไม่มีข้อมูล")
 
     with tab4:
         st.markdown("<div class='section-title'>แก้ไข LINE MAN Insight</div>", unsafe_allow_html=True)
@@ -396,10 +414,18 @@ elif page == "📋 ข้อมูลทั้งหมด":
             
             edited_insight = st.data_editor(df_in, use_container_width=True, num_rows="dynamic", key="editor_ins")
             
-            if st.button("💾 ยืนยันบันทึกการแก้ไข Insight", type="primary"):
-                if update_full_table(edited_insight, "lineman_insight"):
-                    st.success("✅ อัปเดตข้อมูล Insight เรียบร้อย!")
-                    st.rerun()
+            col_btn, col_pin = st.columns([3, 1])
+            with col_pin:
+                pin_ins = st.text_input("รหัสผ่าน", type="password", max_chars=4, placeholder="PIN 4 หลัก", key="pin_in", label_visibility="collapsed")
+            with col_btn:
+                if st.button("💾 ยืนยันบันทึกการแก้ไข Insight", type="primary", use_container_width=True):
+                    if pin_ins == "7727":
+                        if update_full_table(edited_insight, "lineman_insight"):
+                            st.success("✅ อัปเดตข้อมูล Insight เรียบร้อย!")
+                            st.rerun()
+                    else:
+                        st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง")
+        else: st.info("ยังไม่มีข้อมูล")
 
 # ============================================================
 # 🛠️ ADMIN MIGRATION
