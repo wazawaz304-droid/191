@@ -228,7 +228,7 @@ with st.sidebar:
         st.rerun()
 
 # ============================================================
-# 7. PAGE — DASHBOARD
+# 7. PAGE — DASHBOARD (ปรับปรุง: ล็อกสีเข้มชัดเจนแยกตามแอปเดลิเวอรี่)
 # ============================================================
 if page == "📊 Dashboard รายวัน":
     st.markdown("<div class='page-title'>📊 Dashboard รายวัน</div>", unsafe_allow_html=True)
@@ -246,7 +246,22 @@ if page == "📊 Dashboard รายวัน":
     tab1, tab2 = st.tabs(["📈 กราฟรายรับ", "📦 สัดส่วนรายจ่าย"])
     with tab1:
         if not df_i.empty:
-            fig = px.bar(df_i, x='date', y='net_income', color='app', title="รายรับรายวันแยกแอป", color_discrete_sequence=pastel_colors)
+            # 🎨 ตั้งค่า Map สีเข้มชัดเจนตามที่พี่สั่งไว้
+            app_colors = {
+                'LINE MAN': '#2ecc71',      /* เขียวอ่อนสดใส */
+                'GrabFood': '#064e3b',      /* เขียวเข้มตัวจริง */
+                'ShopeeFood': '#f97316',    /* สีส้มเด่นชัด */
+                'หน้าร้าน': '#8b5cf6'        /* สีม่วงโมเดิร์น */
+            }
+            fig = px.bar(
+                df_i, 
+                x='date', 
+                y='net_income', 
+                color='app', 
+                title="รายรับรายวันแยกแอป", 
+                color_discrete_map=app_colors
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig, use_container_width=True)
     with tab2:
         if not df_e.empty:
