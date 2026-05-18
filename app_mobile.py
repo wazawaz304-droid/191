@@ -281,7 +281,7 @@ def save_to_tab(df, tab):
 def process_extraction(data, p_type, is_bytes=False, mime=None, existing_names=None):
     if client is None: return []
     now_str = datetime.now().strftime("%Y-%m-%d")
-    model_name = "models/gemini-2.0-flash-lite-preview-02-05"
+    model_name = "models/gemini-3.1-flash-lite-preview"
 
     if p_type == "Expense":
         names_str = ", ".join(existing_names) if existing_names else "ไม่มี"
