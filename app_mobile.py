@@ -84,7 +84,7 @@ section[data-testid="stSidebar"] > div:first-child {
 [data-testid="stMetricLabel"] { font-size: 0.85rem !important; color: #888 !important; font-weight: 600; text-transform: uppercase; }
 [data-testid="stMetricValue"] { font-size: 1.6rem !important; font-weight: 500; color: #555 !important; }
 
-/* Banners */
+/* Status Cards แถบแจ้งเตือนสถานะ */
 .status-card {
     padding: 1.2rem;
     border-radius: 16px;
@@ -92,10 +92,11 @@ section[data-testid="stSidebar"] > div:first-child {
     display: flex;
     align-items: center;
     gap: 15px;
+    font-size: 1rem;
+    font-weight: 500;
 }
 .success-card { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
 .warn-card { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
-.info-card { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 12px; padding: 0.8rem 1rem; margin-bottom: 0.75rem;}
 
 .page-title { font-size: 2rem; font-weight: 700; color: #555; letter-spacing: -0.5px; margin-bottom: 0.2rem; }
 .page-sub { font-size: 1rem; color: #888; margin-bottom: 2rem; }
@@ -156,6 +157,21 @@ conn_gs = get_gsheets_conn()
 client = get_gemini_client()
 
 # ============================================================
+# 2.5 GLOBAL STATUS NOTIFICATION SYSTEM
+# ============================================================
+def display_status_notification():
+    """ระบบแบนเนอร์แจ้งเตือนสถานะความสำเร็จหรือข้อผิดพลาดหลังจากการ Rerun หน้าจอ"""
+    if "status_msg" in st.session_state:
+        msg_type = st.session_state.get("status_type", "success")
+        if msg_type == "success":
+            st.markdown(f"<div class='status-card success-card'>🎉 {st.session_state.status_msg}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='status-card warn-card'>🚨 {st.session_state.status_msg}</div>", unsafe_allow_html=True)
+        del st.session_state.status_msg
+        if "status_type" in st.session_state: 
+            del st.session_state.status_type
+
+# ============================================================
 # 3. DATA LOADING & UPDATE FUNCTIONS
 # ============================================================
 
@@ -201,11 +217,14 @@ def update_full_table(df, table_name):
         return False
 
 # ============================================================
-# 4. CORE SAVE LOGIC (FOR AI INPUTS)
+# 4. CORE SAVE LOGIC (ปรับปรุงประสิทธิภาพการแมปประเภทข้อมูลตัวเลข)
 # ============================================================
 
 def save_to_tab(df, tab):
-    if conn_sb is None or df.empty: return False
+    if conn_sb is None or df.empty: 
+        st.session_state.status_msg = "ไม่สามารถเชื่อมต่อฐานข้อมูล Cloud หรือข้อมูลว่างเปล่า"
+        st.session_state.status_type = "error"
+        return False
     try:
         table_map = {"Income": "income", "Expense": "expense", "Monthly": "monthly", "LM_Insight": "lineman_insight"}
         table_name = table_map.get(tab, tab.lower())
@@ -220,20 +239,39 @@ def save_to_tab(df, tab):
             if 'name' not in save_df.columns: save_df['name'] = save_df['app'] + " Daily Income"
             if 'qty' not in save_df.columns: save_df['qty'] = 1
             if 'unit' not in save_df.columns: save_df['unit'] = "วัน"
-            if 'total_price' not in save_df.columns: save_df['total_price'] = save_df['net_income']
-            if 'unit_price' not in save_df.columns: save_df['unit_price'] = save_df['net_income']
-            if 'date' in save_df.columns: save_df['date'] = pd.to_datetime(save_df['date']).dt.date
+            
+            # บังคับประเภทข้อมูลตัวเลข เพื่อไม่ให้เพี้ยนเป็น Object Text ตอนแปลง Null
+            for num_col in ['net_income', 'gross_sales', 'gp_amount', 'qty', 'total_price', 'unit_price']:
+                if num_col in save_df.columns:
+                    save_df[num_col] = pd.to_numeric(save_df[num_col], errors='coerce').fillna(0.0)
+            
+            if 'total_price' not in save_df.columns and 'net_income' in save_df.columns: 
+                save_df['total_price'] = save_df['net_income']
+            if 'unit_price' not in save_df.columns and 'net_income' in save_df.columns: 
+                save_df['unit_price'] = save_df['net_income']
+            if 'date' in save_df.columns: 
+                save_df['date'] = pd.to_datetime(save_df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+                
         elif table_name == "expense":
             save_df['type'] = 'Expense'
-            if "unit_price" in save_df.columns: save_df = save_df.drop(columns=["unit_price"])
-            if 'date' in save_df.columns: save_df['date'] = pd.to_datetime(save_df['date']).dt.date
+            if "unit_price" in save_df.columns: 
+                save_df = save_df.drop(columns=["unit_price"])
+            
+            for num_col in ['qty', 'total_price']:
+                if num_col in save_df.columns:
+                    save_df[num_col] = pd.to_numeric(save_df[num_col], errors='coerce').fillna(0.0)
+                    
+            if 'date' in save_df.columns: 
+                save_df['date'] = pd.to_datetime(save_df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
             
         save_df = save_df.where(pd.notnull(save_df), None)
         save_df.to_sql(table_name, conn_sb.engine, if_exists='append', index=False, method='multi')
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"❌ บันทึกล้มเหลว: {e}")
+        logger.error(f"❌ Database Constraint Fail: {e}")
+        st.session_state.status_msg = f"บันทึกลงฐานข้อมูลไม่สำเร็จเนื่องจากโครงสร้างขัดข้อง: {str(e)}"
+        st.session_state.status_type = "error"
         return False
 
 # ============================================================
@@ -290,6 +328,7 @@ with st.sidebar:
 # ============================================================
 if page == "📊 Dashboard รายวัน":
     st.markdown("<div class='page-title'>📊 Dashboard รายวัน</div>", unsafe_allow_html=True)
+    display_status_notification()
     df_i, df_e = load_income_data(), load_expense_data()
 
     if not df_i.empty: df_i['net_income'] = clean_numeric(df_i, 'net_income')
@@ -349,10 +388,11 @@ if page == "📊 Dashboard รายวัน":
             st.plotly_chart(fig_l, use_container_width=True)
 
 # ============================================================
-# 8. PAGE — วิเคราะห์รายเดือน (กู้คืนครบฟังก์ชันดั้งเดิม)
+# 8. PAGE — วิเคราะห์รายเดือน
 # ============================================================
 elif page == "📈 วิเคราะห์รายเดือน":
     st.markdown("<div class='page-title'>📈 วิเคราะห์รายเดือน</div>", unsafe_allow_html=True)
+    display_status_notification()
     st.markdown("<div class='page-sub'>เปรียบเทียบ Gross vs Net · ค่า GP · แนวโน้มแบบครบถ้วน</div>", unsafe_allow_html=True)
     df_m = load_monthly_data()
 
@@ -389,10 +429,11 @@ elif page == "📈 วิเคราะห์รายเดือน":
         st.info("ยังไม่มีข้อมูลรายเดือน")
 
 # ============================================================
-# 9. PAGE — บันทึกรายรับ (กู้คืนครบฟังก์ชันดั้งเดิม)
+# 9. PAGE — บันทึกรายรับ (เพิ่มระบบตรวจสอบความเสถียรแถบสถานะ)
 # ============================================================
 elif page == "💰 บันทึกรายรับ":
     st.markdown("<div class='page-title'>💰 บันทึกรายรับ</div>", unsafe_allow_html=True)
+    display_status_notification()
     rtype = st.radio("ประเภทรายรับ:", ["รายวันเดลิเวอรี่", "สรุปรายเดือน", "หน้าร้าน"], horizontal=True)
     method = st.radio("วิธีบันทึก:", ["📷 ถ่ายรูปหน้าจอสรุปยอด", "🎙️ พูดบันทึกยอดขาย", "⌨️ พิมพ์เอง", "🖼️ อัปโหลดรูป"], horizontal=True)
 
@@ -426,7 +467,10 @@ elif page == "💰 บันทึกรายรับ":
             if st.button("💾 บันทึกลง Cloud", type="primary"):
                 if save_to_tab(edited_df, "Income"):
                     del st.session_state.tmp_inc_data
-                    st.success("บันทึกสำเร็จ!")
+                    st.session_state.status_msg = "บันทึกรายรับร้านเดลิเวอรี่เข้าสู่ระบบคลาวด์เสร็จสมบูรณ์แล้วครับ!"
+                    st.session_state.status_type = "success"
+                    st.rerun()
+                else:
                     st.rerun()
         with c2:
             if st.button("🗑️ ล้างข้อมูล"):
@@ -434,10 +478,11 @@ elif page == "💰 บันทึกรายรับ":
                 st.rerun()
 
 # ============================================================
-# 10. PAGE — บันทึกรายจ่าย (กู้คืนครบฟังก์ชันดั้งเดิม)
+# 10. PAGE — บันทึกรายจ่าย (เพิ่มระบบตรวจสอบความเสถียรแถบสถานะ)
 # ============================================================
 elif page == "💸 บันทึกรายจ่าย":
     st.markdown("<div class='page-title'>💸 บันทึกรายจ่าย</div>", unsafe_allow_html=True)
+    display_status_notification()
     method = st.radio("เลือกวิธีบันทึก:", ["📷 ถ่ายรูปใบเสร็จ", "🎙️ พูดบันทึกเสียง", "⌨️ พิมพ์เอง", "🖼️ อัปโหลดรูป"], horizontal=True)
 
     df_exp_db = load_expense_data()
@@ -473,7 +518,10 @@ elif page == "💸 บันทึกรายจ่าย":
             if st.button("💾 ยืนยันบันทึก", type="primary"):
                 if save_to_tab(edited_df, "Expense"):
                     del st.session_state.tmp_exp_data
-                    st.success("บันทึกสำเร็จ!")
+                    st.session_state.status_msg = "บันทึกรายการรายจ่ายวัตถุดิบลงฐานข้อมูลเรียบร้อยแล้วครับพี่กุลเศรษฐ์!"
+                    st.session_state.status_type = "success"
+                    st.rerun()
+                else:
                     st.rerun()
         with c2:
             if st.button("🗑️ ล้างรายการ"):
@@ -485,6 +533,7 @@ elif page == "💸 บันทึกรายจ่าย":
 # ============================================================
 elif page == "📧 Sync ยอดจาก Email":
     st.markdown("<div class='page-title'>📧 Sync ยอดเดลิเวอรี่จาก Email</div>", unsafe_allow_html=True)
+    display_status_notification()
     if st.button("🔄 โหลดข้อมูลใหม่จาก Email (ผ่าน Sheets)"):
         if conn_gs:
             df_gmail = conn_gs.read(worksheet="Income", ttl=0)
@@ -495,15 +544,17 @@ elif page == "📧 Sync ยอดจาก Email":
     if 'df_email_sync' in st.session_state:
         if st.button("🚀 ยืนยันนำข้อมูลเข้า Cloud Database", type="primary"):
             if save_to_tab(st.session_state.df_email_sync, "Income"):
-                st.success("ย้ายข้อมูลเข้า Cloud เรียบร้อย!")
+                st.session_state.status_msg = "ย้ายข้อมูลรายรับจากอีเมลเข้าคลาวด์เรียบร้อย!"
+                st.session_state.status_type = "success"
                 del st.session_state.df_email_sync
                 st.rerun()
 
 # ============================================================
-# 12. PAGE — LINE MAN INSIGHT (กู้คืนครบฟังก์ชันดั้งเดิม + กราฟ)
+# 12. PAGE — LINE MAN INSIGHT
 # ============================================================
 elif page == "🎯 LINE MAN Insight":
     st.markdown("<div class='page-title'>🎯 LINE MAN Insight</div>", unsafe_allow_html=True)
+    display_status_notification()
     method = st.radio("วิธีอัปโหลดข้อมูล:", ["📷 ถ่ายรูปสด/อัปโหลดรูป", "⌨️ วางข้อความ"], horizontal=True)
 
     res_insight = []
@@ -536,8 +587,9 @@ elif page == "🎯 LINE MAN Insight":
         with c1:
             if st.button("💾 ยืนยันบันทึก Insight", type="primary"):
                 if save_to_tab(edited_insight, "LM_Insight"):
+                    st.session_state.status_msg = "บันทึกสถิติข้อมูล LINE MAN Insight เรียบร้อย!"
+                    st.session_state.status_type = "success"
                     del st.session_state.tmp_insight
-                    st.success("บันทึก Insight สำเร็จ!")
                     st.rerun()
         with c2:
             if st.button("🗑️ ล้างรายการ"):
@@ -552,12 +604,12 @@ elif page == "🎯 LINE MAN Insight":
         if not df_menu.empty:
             df_menu['qty'] = pd.to_numeric(df_menu['qty'], errors='coerce').fillna(0)
             top_menu = df_menu.groupby('name')['qty'].sum().sort_values(ascending=False).reset_index()
-            c1, c2 = st.columns([2, 1])
-            with c1:
+            col_g1, col_g2 = st.columns([2, 1])
+            with col_g1:
                 fig_menu = px.bar(top_menu, x='qty', y='name', orientation='h', title="เมนูยอดฮิต", color_discrete_sequence=[pastel_colors[0]])
                 fig_menu.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig_menu, use_container_width=True)
-            with c2:
+            with col_g2:
                 st.info(f"**💡 AI แนะนำ:**\nสินค้าขายดีที่สุดคือ **'{top_menu.iloc[0]['name']}'** คุมสต็อกตัวนี้ให้ดีครับ")
 
         st.markdown("<div class='section-title'>📈 ประสิทธิภาพโฆษณาและโปรโมชั่น</div>", unsafe_allow_html=True)
@@ -576,6 +628,7 @@ elif page == "🎯 LINE MAN Insight":
 # ============================================================
 elif page == "🤖 AI Agent":
     st.markdown("<div class='page-title'>🤖 AI Agent</div>", unsafe_allow_html=True)
+    display_status_notification()
     df_i, df_e = load_income_data(), load_expense_data()
     if not df_i.empty or not df_e.empty:
         st.info("🤖 AI Agent - ยังไม่พร้อมใช้งานในเวอร์ชันนี้ กำลังพัฒนาครับพี่กุลเศรษฐ์")
@@ -583,10 +636,11 @@ elif page == "🤖 AI Agent":
         st.warning("⚠️ ยังไม่มีข้อมูลในระบบ")
 
 # ============================================================
-# 14. PAGE — ALL DATA (จัดหลังบ้านครบ 4 แท็บ + ล็อกรหัสผ่าน 7727)
+# 14. PAGE — ALL DATA
 # ============================================================
 elif page == "📋 ข้อมูลทั้งหมด":
     st.markdown("<div class='page-title'>📋 จัดการฐานข้อมูลหลังบ้าน (Editable)</div>", unsafe_allow_html=True)
+    display_status_notification()
     st.info("💡 พี่สามารถคลิกแก้ไขตารางได้โดยตรง และต้องกรอกรหัสความปลอดภัยก่อนกดยืนยันบันทึกครับ")
 
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Income", "📦 Expense", "📅 Monthly", "🎯 Insight"])
@@ -602,7 +656,10 @@ elif page == "📋 ข้อมูลทั้งหมด":
             with col_btn:
                 if st.button("💾 ยืนยันบันทึกการแก้ไข Income", type="primary", use_container_width=True):
                     if pin_inc == "7727":
-                        if update_full_table(edited_income, "income"): st.success("✅ อัปเดตตารางรายรับเรียบร้อย!")
+                        if update_full_table(edited_income, "income"): 
+                            st.session_state.status_msg = "แก้ไขโครงสร้างตารางรายรับบนฐานข้อมูลสำเร็จ!"
+                            st.session_state.status_type = "success"
+                            st.rerun()
                     else: st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง")
         else: st.info("ไม่มีข้อมูล")
 
@@ -617,7 +674,10 @@ elif page == "📋 ข้อมูลทั้งหมด":
             with col_btn:
                 if st.button("💾 ยืนยันบันทึกการแก้ไข Expense", type="primary", use_container_width=True):
                     if pin_exp == "7727":
-                        if update_full_table(edited_expense, "expense"): st.success("✅ อัปเดตตารางรายจ่ายเรียบร้อย!")
+                        if update_full_table(edited_expense, "expense"): 
+                            st.session_state.status_msg = "แก้ไขโครงสร้างตารางรายจ่ายบนฐานข้อมูลสำเร็จ!"
+                            st.session_state.status_type = "success"
+                            st.rerun()
                     else: st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง")
         else: st.info("ไม่มีข้อมูล")
 
@@ -632,7 +692,10 @@ elif page == "📋 ข้อมูลทั้งหมด":
             with col_btn:
                 if st.button("💾 ยืนยันบันทึกการแก้ไข Monthly", type="primary", use_container_width=True):
                     if pin_mon == "7727":
-                        if update_full_table(edited_monthly, "monthly"): st.success("✅ อัปเดตตารางสรุปรายเดือนเรียบร้อย!")
+                        if update_full_table(edited_monthly, "monthly"): 
+                            st.session_state.status_msg = "แก้ไขโครงสร้างตารางรายงานประจำเดือนบนฐานข้อมูลสำเร็จ!"
+                            st.session_state.status_type = "success"
+                            st.rerun()
                     else: st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง")
         else: st.info("ไม่มีข้อมูล")
 
@@ -647,7 +710,10 @@ elif page == "📋 ข้อมูลทั้งหมด":
             with col_btn:
                 if st.button("💾 ยืนยันบันทึกการแก้ไข Insight", type="primary", use_container_width=True):
                     if pin_ins == "7727":
-                        if update_full_table(edited_insight, "lineman_insight"): st.success("✅ อัปเดตตาราง Insight เรียบร้อย!")
+                        if update_full_table(edited_insight, "lineman_insight"): 
+                            st.session_state.status_msg = "แก้ไขโครงสร้างตารางข้อมูลอินไซต์สำเร็จ!"
+                            st.session_state.status_type = "success"
+                            st.rerun()
                     else: st.error("❌ รหัสความปลอดภัยไม่ถูกต้อง")
         else: st.info("ไม่มีข้อมูล")
 
@@ -655,4 +721,6 @@ elif page == "📋 ข้อมูลทั้งหมด":
 # 🛠️ ADMIN MIGRATION
 # ============================================================
 elif page == "🛠️ Admin Migration":
+    st.markdown("<div class='page-title'>🛠️ Admin Migration</div>", unsafe_allow_html=True)
+    display_status_notification()
     run_migration_process()
