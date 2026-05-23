@@ -371,8 +371,41 @@ if page == "📊 Dashboard รายวัน":
         if not df_e.empty:
             col_l, col_r = st.columns(2)
             with col_l:
-                fig_pie = px.pie(df_e, values='total_price', names='name', hole=0.4, title="สัดส่วนรายจ่ายวัตถุดิบ", color_discrete_sequence=pastel_colors)
+                # 🛠️ ตรรกะคำนวณรวบรวมกลุ่มวัตถุดิบที่ยอดรวมต่ำกว่า 3% ให้กลายเป็น "อื่นๆ"
+                df_pie_data = df_e.groupby('name')['total_price'].sum().reset_index()
+                grand_total = df_pie_data['total_price'].sum()
+                
+                if grand_total > 0:
+                    df_pie_data['percentage'] = (df_pie_data['total_price'] / grand_total) * 100
+                    
+                    # คัดแยกรายการหลัก (>= 3%) และรายการย่อย (< 3%)
+                    main_items = df_pie_data[df_pie_data['percentage'] >= 3.0].copy()
+                    other_items = df_pie_data[df_pie_data['percentage'] < 3.0]
+                    
+                    if not other_items.empty:
+                        other_row = pd.DataFrame([{
+                            'name': 'วัตถุดิบอื่นๆ (ย่อย)',
+                            'total_price': other_items['total_price'].sum(),
+                            'percentage': other_items['percentage'].sum()
+                        }])
+                        final_pie_df = pd.concat([main_items, other_row], ignore_index=True)
+                    else:
+                        final_pie_df = main_items
+                else:
+                    final_pie_df = df_pie_data
+
+                # สร้างกราฟวงกลมพาสเทลที่สะอาดตาขึ้น
+                fig_pie = px.pie(
+                    final_pie_df, 
+                    values='total_price', 
+                    names='name', 
+                    hole=0.4, 
+                    title="สัดส่วนรายจ่ายวัตถุดิบหลัก (รวมกลุ่มชิ้นเล็ก)", 
+                    color_discrete_sequence=pastel_colors
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
+                
             with col_r:
                 top = df_e.groupby('name')['total_price'].sum().nlargest(8).reset_index()
                 fig_bar = px.bar(top, x='total_price', y='name', orientation='h', color='total_price', color_continuous_scale='Greens', title="Top 8 รายจ่ายสูงสุด")
